@@ -151,10 +151,8 @@ The command center page should list the scaffolded tools.
 Expected tools:
 
 ```txt
-queryNotionKB
-updateNotionKB
-queryNotionSprintBoard
-updateNotionSprintBoard
+queryNotion
+updateNotion
 querySlack
 updateSlack
 queryGithub
@@ -167,8 +165,7 @@ buySomething
 Expected ownership:
 
 ```txt
-queryNotionKB, updateNotionKB -> carlos
-queryNotionSprintBoard, updateNotionSprintBoard -> edrick
+queryNotion, updateNotion -> edrick
 querySlack, updateSlack -> edrick
 queryGithub, updateGithub -> edrick, darren
 queryExa -> laksh, edrick
@@ -191,7 +188,7 @@ Expected shape:
 {
   "conversationId": "conv-pistachio-launch-blocker",
   "events": [
-    { "type": "tool_call", "tool": "queryNotionSprintBoard" },
+    { "type": "tool_call", "tool": "queryNotion" },
     { "type": "tool_call", "tool": "querySlack" },
     { "type": "tool_call", "tool": "queryExa" },
     {
@@ -221,7 +218,6 @@ http://localhost:3000/knowledge-graph
 
 This is a placeholder for the derived graph over:
 
-- Notion pages
 - Notion sprint board tickets
 - Slack threads
 - GitHub issues and PRs
@@ -277,7 +273,7 @@ Wire `apps/web/app/api/chat/route.ts` to a real streaming agent runner.
 Recommended event order:
 
 ```txt
-Tool called: queryNotionSprintBoard
+Tool called: queryNotion
 Tool called: querySlack
 Tool called: queryExa
 

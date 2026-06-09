@@ -2,10 +2,8 @@ import type { AgentId, ToolName } from "./tool-types";
 import type { PersonId } from "./users";
 
 export const toolOwners: Record<ToolName, PersonId[]> = {
-  queryNotionKB: ["carlos"],
-  updateNotionKB: ["carlos"],
-  queryNotionSprintBoard: ["edrick"],
-  updateNotionSprintBoard: ["edrick"],
+  queryNotion: ["edrick"],
+  updateNotion: ["edrick"],
   querySlack: ["edrick"],
   updateSlack: ["edrick"],
   queryGithub: ["edrick", "darren"],
@@ -27,6 +25,6 @@ export const agentTools: Record<AgentId, ToolName[]> = {
   main: [],
   coder: ["queryGithub", "updateGithub"],
   paymentsManager: ["makePayment", "buySomething"],
-  searcher: ["queryNotionKB", "queryNotionSprintBoard", "querySlack", "queryGithub", "queryExa"],
-  updater: ["updateNotionKB", "updateNotionSprintBoard", "updateSlack", "updateGithub"],
+  searcher: ["queryNotion", "querySlack", "queryGithub", "queryExa"],
+  updater: ["updateNotion", "updateSlack", "updateGithub"],
 };

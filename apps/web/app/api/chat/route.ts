@@ -49,7 +49,7 @@ export async function POST(request: Request) {
   const shouldUpdate = /move|update|send|assign|change|post/i.test(message);
 
   const events: AgentEvent[] = [
-    { type: "tool_call", tool: message.includes("ticket") || message.includes("web-112") ? "queryNotionSprintBoard" : "queryNotionKB" },
+    { type: "tool_call", tool: "queryNotion" },
     { type: "tool_call", tool: "querySlack" },
   ];
 
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
   }
 
   if (shouldUpdate) {
-    events.push({ type: "tool_call", tool: "updateNotionSprintBoard" }, { type: "tool_call", tool: "updateSlack" });
+    events.push({ type: "tool_call", tool: "updateNotion" }, { type: "tool_call", tool: "updateSlack" });
   }
 
   events.push({

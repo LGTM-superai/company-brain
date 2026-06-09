@@ -20,7 +20,7 @@ const conversations = [
   {
     conversationId: "conv-brochure-asset-lookup",
     title: "June tasting brochure",
-    summary: "Located the latest marketing brochure image from the Notion knowledge base asset index.",
+    summary: "Located the latest marketing brochure image from the Slack asset thread and S3 index.",
     updatedLabel: "12 min ago",
     order: 2,
   },
@@ -52,8 +52,8 @@ const messages = [
     messageId: "m-002",
     conversationId: "conv-pistachio-launch-blocker",
     role: "tool",
-    content: "Tool called: queryNotionSprintBoard",
-    toolName: "queryNotionSprintBoard",
+    content: "Tool called: queryNotion",
+    toolName: "queryNotion",
     order: 2,
   },
   {
@@ -105,8 +105,8 @@ const messages = [
     messageId: "m-007",
     conversationId: "conv-brochure-asset-lookup",
     role: "tool",
-    content: "Tool called: queryNotionKB",
-    toolName: "queryNotionKB",
+    content: "Tool called: querySlack",
+    toolName: "querySlack",
     order: 2,
   },
   {
@@ -114,7 +114,7 @@ const messages = [
     conversationId: "conv-brochure-asset-lookup",
     role: "assistant",
     content:
-      "Found it in the Notion page Marketing / Campaigns / June Tasting Event. The indexed asset points to Assets/brochure-june-event.png and is linked to the Pistachio Cafe launch package.",
+      "Found it in the #marketing-assets Slack thread for the June Tasting Event. The indexed asset points to Assets/brochure-june-event.png and is linked to the Pistachio Cafe launch package.",
     order: 3,
   },
   {
@@ -128,16 +128,16 @@ const messages = [
     messageId: "m-010",
     conversationId: "conv-ticket-status-update",
     role: "tool",
-    content: "Tool called: queryNotionSprintBoard",
-    toolName: "queryNotionSprintBoard",
+    content: "Tool called: queryNotion",
+    toolName: "queryNotion",
     order: 2,
   },
   {
     messageId: "m-011",
     conversationId: "conv-ticket-status-update",
     role: "tool",
-    content: "Tool called: updateNotionSprintBoard",
-    toolName: "updateNotionSprintBoard",
+    content: "Tool called: updateNotion",
+    toolName: "updateNotion",
     order: 3,
   },
   {
@@ -167,8 +167,8 @@ const messages = [
     messageId: "m-015",
     conversationId: "conv-contractor-payment",
     role: "tool",
-    content: "Tool called: queryNotionKB",
-    toolName: "queryNotionKB",
+    content: "Tool called: queryNotion",
+    toolName: "queryNotion",
     order: 2,
   },
   {
@@ -198,17 +198,7 @@ const knowledgeNodes = [
     summary: "Routes work to coder, payments manager, searcher, and updater agents.",
     x: 50,
     y: 50,
-    links: ["notion-kb", "sprint-board", "slack", "github", "exa"],
-  },
-  {
-    nodeId: "notion-kb",
-    label: "Notion KB",
-    type: "knowledge-source",
-    source: "notion",
-    summary: "Company docs, client briefs, launch plans, and policy pages.",
-    x: 18,
-    y: 24,
-    links: ["company-brain", "brochure-assets"],
+    links: ["sprint-board", "slack", "github", "exa"],
   },
   {
     nodeId: "sprint-board",
@@ -265,10 +255,10 @@ const knowledgeNodes = [
     label: "Brochure Assets",
     type: "asset",
     source: "s3",
-    summary: "Marketing event brochure image indexed from Notion and stored in S3.",
+    summary: "Marketing event brochure image indexed from Slack and stored in S3.",
     x: 18,
     y: 49,
-    links: ["notion-kb"],
+    links: ["slack"],
   },
 ];
 
@@ -336,6 +326,8 @@ async function seed() {
     conversationId: { $in: replacedConversationIds },
   });
   await MessageModel.insertMany(messages);
+
+  await KnowledgeNodeModel.deleteMany({ nodeId: "notion-kb" });
 
   await Promise.all(
     knowledgeNodes.map((node) =>

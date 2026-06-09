@@ -52,7 +52,7 @@ This keeps the main prompt small while allowing each integration to have precise
 The frontend should render agent events in order:
 
 ```txt
-Tool called: queryNotionSprintBoard
+Tool called: queryNotion
 Tool called: querySlack
 Tool called: queryExa
 

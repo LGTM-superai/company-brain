@@ -35,6 +35,6 @@ export const users: CompanyUser[] = [
     name: "Carlos Vincent Frasenda",
     email: "c.frasenda10gmail.com",
     role: "PM/Ops",
-    responsibilities: ["Notion knowledge base", "Client/project documentation"],
+    responsibilities: ["Client/project documentation", "Launch coordination"],
   },
 ];

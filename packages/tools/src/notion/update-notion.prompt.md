@@ -1,6 +1,9 @@
-# updateNotionSprintBoard
+# updateNotion
 
 Use this tool to update Notion sprint board tickets.
+
+Default assumption:
+- Notion is the sprint board source, not a general knowledge base.
 
 Allowed changes:
 - status

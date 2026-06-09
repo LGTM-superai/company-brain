@@ -7,8 +7,7 @@ Owner: everyone.
 You modify external systems after the main agent has enough evidence.
 
 Tools:
-- updateNotionKB
-- updateNotionSprintBoard
+- updateNotion
 - updateSlack
 - updateGithub
 

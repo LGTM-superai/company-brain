@@ -1,7 +1,5 @@
-import { queryNotionKB } from "./notion/query-notion-kb";
-import { updateNotionKB } from "./notion/update-notion-kb";
-import { queryNotionSprintBoard } from "./notion/query-notion-sprint-board";
-import { updateNotionSprintBoard } from "./notion/update-notion-sprint-board";
+import { queryNotion } from "./notion/query-notion";
+import { updateNotion } from "./notion/update-notion";
 import { querySlack } from "./slack/query-slack";
 import { updateSlack } from "./slack/update-slack";
 import { queryGithub } from "./github/query-github";
@@ -11,10 +9,8 @@ import { makePayment } from "./payments/make-payment";
 import { buySomething } from "./payments/buy-something";
 
 export const toolRegistry = {
-  queryNotionKB,
-  updateNotionKB,
-  queryNotionSprintBoard,
-  updateNotionSprintBoard,
+  queryNotion,
+  updateNotion,
   querySlack,
   updateSlack,
   queryGithub,

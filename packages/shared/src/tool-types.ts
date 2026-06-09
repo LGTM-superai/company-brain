@@ -1,8 +1,6 @@
 export type ToolName =
-  | "queryNotionKB"
-  | "updateNotionKB"
-  | "queryNotionSprintBoard"
-  | "updateNotionSprintBoard"
+  | "queryNotion"
+  | "updateNotion"
   | "querySlack"
   | "updateSlack"
   | "queryGithub"
