@@ -15,7 +15,8 @@
     "paths": {
       "@company-brain/agents": ["packages/agents/src/index.ts"],
       "@company-brain/tools": ["packages/tools/src/index.ts"],
-      "@company-brain/shared": ["packages/shared/src/index.ts"]
+      "@company-brain/shared": ["packages/shared/src/index.ts"],
+      "@company-brain/vulnerability": ["packages/vulnerability/src/index.ts"]
     }
   },
   "include": [
