@@ -6,23 +6,41 @@
   "scripts": {
     "dev": "next dev",
     "seed": "bun --env-file=../../.env scripts/seed.ts",
+    "index": "bun --env-file=../../.env scripts/index-sources.ts",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1064.0",
     "@company-brain/agents": "workspace:*",
     "@company-brain/shared": "workspace:*",
     "@company-brain/tools": "workspace:*",
+    "@notionhq/client": "^5.22.0",
+    "@octokit/rest": "^22.0.1",
+    "@radix-ui/react-avatar": "^1.1.12",
+    "@radix-ui/react-scroll-area": "^1.2.11",
+    "@radix-ui/react-separator": "^1.1.9",
+    "@radix-ui/react-slot": "^1.2.5",
+    "@radix-ui/react-tooltip": "^1.2.9",
+    "@slack/web-api": "^7.16.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "exa-js": "^2.13.0",
+    "lucide-react": "^1.17.0",
     "mongoose": "^9.6.3",
     "next": "^15.0.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "postcss": "^8.5.15",
+    "tailwindcss": "^4.3.0",
     "typescript": "^5.8.0"
   }
 }

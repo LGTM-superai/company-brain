@@ -5,7 +5,6 @@ import {
   AgentModel,
   CompanyUserModel,
   ConversationModel,
-  KnowledgeNodeModel,
   MessageModel,
 } from "../lib/models";
 
@@ -189,78 +188,6 @@ const messages = [
   },
 ];
 
-const knowledgeNodes = [
-  {
-    nodeId: "company-brain",
-    label: "Company Brain",
-    type: "agent-router",
-    source: "internal",
-    summary: "Routes work to coder, payments manager, searcher, and updater agents.",
-    x: 50,
-    y: 50,
-    links: ["sprint-board", "slack", "github", "exa"],
-  },
-  {
-    nodeId: "sprint-board",
-    label: "Sprint Board",
-    type: "project-source",
-    source: "notion",
-    summary: "Kanban tickets, statuses, assignees, priorities, and blockers.",
-    x: 27,
-    y: 73,
-    links: ["company-brain", "web-112"],
-  },
-  {
-    nodeId: "slack",
-    label: "Slack",
-    type: "communication-source",
-    source: "slack",
-    summary: "Engineering updates, announcements, blocker signals, and action logs.",
-    x: 77,
-    y: 25,
-    links: ["company-brain", "web-112"],
-  },
-  {
-    nodeId: "github",
-    label: "GitHub",
-    type: "code-source",
-    source: "github",
-    summary: "Repository, issue, pull request, branch, and code context.",
-    x: 73,
-    y: 75,
-    links: ["company-brain", "web-112"],
-  },
-  {
-    nodeId: "exa",
-    label: "Exa",
-    type: "external-search",
-    source: "exa",
-    summary: "External documentation and live-web validation results.",
-    x: 50,
-    y: 17,
-    links: ["company-brain", "web-112"],
-  },
-  {
-    nodeId: "web-112",
-    label: "WEB-112",
-    type: "ticket",
-    source: "notion",
-    summary: "Implement contact form routing; currently the main launch blocker.",
-    x: 50,
-    y: 84,
-    links: ["sprint-board", "slack", "github", "exa"],
-  },
-  {
-    nodeId: "brochure-assets",
-    label: "Brochure Assets",
-    type: "asset",
-    source: "s3",
-    summary: "Marketing event brochure image indexed from Slack and stored in S3.",
-    x: 18,
-    y: 49,
-    links: ["slack"],
-  },
-];
 
 const replacedConversationIds = [
   "contact-page-launch",
@@ -327,13 +254,6 @@ async function seed() {
   });
   await MessageModel.insertMany(messages);
 
-  await KnowledgeNodeModel.deleteMany({ nodeId: "notion-kb" });
-
-  await Promise.all(
-    knowledgeNodes.map((node) =>
-      KnowledgeNodeModel.updateOne({ nodeId: node.nodeId }, { $set: node }, { upsert: true }),
-    ),
-  );
 
   await disconnectMongo();
 
