@@ -1,0 +1,14 @@
+# Local Codex attachments
+.codex-remote-attachments/
+
+# Hackathon wireframe draft
+wireframe/
+
+# Cloned reference repositories
+scout/
+agno/
+obsidian-api/
+
+# Common local clutter
+.DS_Store
+Thumbs.db
