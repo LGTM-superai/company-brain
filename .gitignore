@@ -19,3 +19,8 @@ bun.lockb
 .next/
 apps/web/.next/
 apps/web/out/
+apps/web/tsconfig.tsbuildinfo
+
+# Local environment
+.env
+.env.local

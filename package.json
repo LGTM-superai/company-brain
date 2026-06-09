@@ -9,7 +9,8 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run --cwd apps/web dev",
+    "dev": "bun run --env-file=.env --cwd apps/web dev",
+    "seed": "bun --env-file=.env apps/web/scripts/seed.ts",
     "typecheck": "bun run --cwd apps/web typecheck"
   },
   "devDependencies": {

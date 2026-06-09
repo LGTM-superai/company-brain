@@ -31,6 +31,37 @@ packages/tools
 packages/shared
 ```
 
+## Environment
+
+Create a root `.env` file:
+
+```bash
+cp .env.example .env
+```
+
+Set:
+
+```txt
+MONGODB_URL=...
+MONGODB_DB_NAME=company_brain
+```
+
+## Seed MongoDB
+
+From the repository root:
+
+```bash
+bun run seed
+```
+
+This creates sample:
+
+- users
+- agents
+- conversations
+- messages
+- knowledge graph nodes
+
 ## Run The App
 
 From the repository root:
@@ -73,10 +104,10 @@ Implemented:
 - tool prompt files
 - agent prompt files
 - shared streamed event schema
-- placeholder Next.js app
-- placeholder chat API route
-- placeholder knowledge graph page
-- placeholder users page
+- Mongo-backed Next.js app
+- Mongo-backed chat API route
+- Mongo-backed knowledge graph page
+- Mongo-backed users page
 
 Not implemented yet:
 
@@ -149,19 +180,23 @@ makePayment, buySomething -> laksh
 With the dev server running, call:
 
 ```bash
-curl -X POST http://localhost:3000/api/chat
+curl -X POST http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"conversationId":"conv-pistachio-launch-blocker","message":"What is blocking launch? Verify with Exa."}'
 ```
 
 Expected shape:
 
 ```json
 {
+  "conversationId": "conv-pistachio-launch-blocker",
   "events": [
     { "type": "tool_call", "tool": "queryNotionSprintBoard" },
     { "type": "tool_call", "tool": "querySlack" },
+    { "type": "tool_call", "tool": "queryExa" },
     {
       "type": "assistant_message",
-      "content": "Chat route scaffold. Replace this with the streaming agent runner."
+      "content": "I checked the relevant company context and returned the most relevant current answer with source-aware routing."
     },
     { "type": "done" }
   ]
@@ -171,8 +206,10 @@ Expected shape:
 On Windows PowerShell:
 
 ```powershell
-Invoke-RestMethod -Method Post -Uri http://localhost:3000/api/chat
+Invoke-RestMethod -Method Post -Uri http://localhost:3000/api/chat -ContentType "application/json" -Body '{"conversationId":"conv-pistachio-launch-blocker","message":"What is blocking launch? Verify with Exa."}'
 ```
+
+The route persists the user message, tool call lines, Exa result block, and assistant response into MongoDB.
 
 ## Verify The Knowledge Graph Page
 

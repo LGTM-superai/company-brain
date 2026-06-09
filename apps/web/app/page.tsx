@@ -1,33 +1,27 @@
-import { agentRegistry } from "@company-brain/agents";
-import { toolRegistry } from "@company-brain/tools";
+import { ChatInterface } from "../components/chat/chat-interface";
+import { AppShell } from "../components/shell";
+import { getDashboardData } from "../lib/data";
 
-export default function CommandCenterPage() {
+export default async function CommandCenterPage() {
+  const data = await getDashboardData();
+
   return (
-    <main>
-      <h1>Company Brain Command Center</h1>
-      <p>Chat-first interface. Tool calls and Exa results should stream into this page.</p>
-
-      <section>
-        <h2>Agents</h2>
-        <ul>
-          {Object.values(agentRegistry).map((agent) => (
-            <li key={agent.id}>
-              <strong>{agent.name}</strong> - {agent.owner}
-            </li>
-          ))}
-        </ul>
+    <AppShell activePath="/">
+      <section className="page-heading">
+        <div>
+          <p className="eyebrow">Command Center</p>
+          <h1>Company Brain</h1>
+        </div>
+        <p className="audit-note">External writes log to #company-brain-actions</p>
       </section>
 
-      <section>
-        <h2>Tools</h2>
-        <ul>
-          {Object.values(toolRegistry).map((tool) => (
-            <li key={tool.name}>
-              <strong>{tool.name}</strong> - {tool.mode}
-            </li>
-          ))}
-        </ul>
-      </section>
-    </main>
+      {data.error ? <div className="setup-banner">{data.error} Run `bun run seed` after setting MONGODB_URL.</div> : null}
+
+      <ChatInterface
+        conversations={data.conversations}
+        initialMessages={data.messages}
+        agents={data.agents}
+      />
+    </AppShell>
   );
 }
