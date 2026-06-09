@@ -14,6 +14,14 @@ type ChatItem =
       exaResults?: DashboardMessage["exaResults"];
     };
 
+const useCases = [
+  { label: "Repo Health", icon: "monitor_heart", prompt: "Analyze repository health and suggest optimizations." },
+  { label: "Security", icon: "shield", prompt: "Review access, permissions, and protocol changes." },
+  { label: "Budget", icon: "account_balance_wallet", prompt: "Prepare finance actions and approval summaries." },
+  { label: "Knowledge", icon: "hub", prompt: "Trace answers through docs, Slack, GitHub, and Exa." },
+  { label: "Team", icon: "groups", prompt: "Route questions to owners and responsible teams." },
+];
+
 export function ChatInterface({
   conversations,
   initialMessages,
@@ -110,75 +118,51 @@ export function ChatInterface({
   }
 
   return (
-    <div className="command-grid">
-      <section className="conversation-sidebar panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">History</p>
-            <h2>Conversations</h2>
-          </div>
-        </div>
-
-        <div className="conversation-list">
-          {conversations.map((conversation, index) => (
-            <button
-              className={index === 0 ? "conversation-item active" : "conversation-item"}
-              key={conversation.conversationId}
-              type="button"
-            >
-              <strong>{conversation.title}</strong>
-              <span>{conversation.summary}</span>
-              <small>{conversation.updatedLabel}</small>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="chat-panel panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Active Thread</p>
-            <h2>{activeConversation?.title ?? "No conversations yet"}</h2>
-          </div>
-          <span className="quiet-pill">{agents.length} agents / {toolCount} tools</span>
-        </div>
-
-        <div className="message-list">
-          {messages.map((message) => (
-            <MessageBubble key={message.messageId} message={message} />
-          ))}
-        </div>
-
-        <form className="chat-form" onSubmit={submitMessage}>
-          <input
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder="Ask about tickets, docs, blockers, users, or external evidence..."
-          />
-          <button type="submit" disabled={isRunning}>
-            {isRunning ? "Running" : "Send"}
+    <div className="command-center">
+      <div className="usecase-strip" aria-label="Use cases">
+        {useCases.map((useCase, index) => (
+          <button className={index === 0 ? "usecase-chip active" : "usecase-chip"} key={useCase.label} type="button">
+            <span className="material-symbols-outlined">{useCase.icon}</span>
+            <strong>{useCase.label}</strong>
           </button>
-        </form>
-      </section>
+        ))}
+      </div>
 
-      <section className="agent-sidebar panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Agents</p>
-            <h2>Roster</h2>
+      <div className="command-body">
+        <section className="chat-panel">
+          <div className="thread-heading">
+            <div>
+              <p className="eyebrow">Active Thread</p>
+              <h2>{activeConversation?.title ?? "No conversations yet"}</h2>
+            </div>
+            <span className="quiet-pill">{agents.length} agents / {toolCount} tools</span>
           </div>
-        </div>
 
-        <div className="agent-list">
-          {agents.map((agent) => (
-            <article className="agent-card" key={agent.agentId}>
-              <strong>{agent.name}</strong>
-              <span>{agent.owner}</span>
-              <p>{agent.purpose}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+          <div className="message-list">
+            {messages.map((message) => (
+              <MessageBubble key={message.messageId} message={message} />
+            ))}
+          </div>
+
+          <form className="chat-form" onSubmit={submitMessage}>
+            <span className="material-symbols-outlined chat-form-icon">terminal</span>
+            <input
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              placeholder="Ask about tickets, docs, blockers, users, or external evidence..."
+            />
+            <div className="chat-form-tools">
+              <button className="ghost-icon" type="button" aria-label="Attach file">
+                <span className="material-symbols-outlined">attach_file</span>
+              </button>
+              <button className="send-button" type="submit" disabled={isRunning}>
+                <span>{isRunning ? "Running" : "Send"}</span>
+                <span className="material-symbols-outlined">send</span>
+              </button>
+            </div>
+          </form>
+        </section>
+      </div>
     </div>
   );
 }
@@ -209,7 +193,10 @@ function MessageBubble({ message }: { message: ChatItem }) {
 
   return (
     <article className={message.role === "user" ? "message user-message" : "message assistant-message"}>
-      <strong>{message.role === "user" ? "You" : "Company Brain"}</strong>
+      <strong>
+        {message.role === "user" ? "User" : "Precision Engine"}
+        <span>{message.role === "user" ? "Just now" : "RAG analysis complete"}</span>
+      </strong>
       <p>{message.content}</p>
     </article>
   );

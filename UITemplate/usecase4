@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Precision AI | Command Center</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-lowest": "#010f1f",
+                        "primary-fixed-dim": "#bec6e0",
+                        "outline-variant": "#45464d",
+                        "surface-bright": "#2c3a4c",
+                        "on-secondary": "#233144",
+                        "surface-dim": "#051424",
+                        "on-tertiary-fixed": "#001f26",
+                        "on-secondary-container": "#abb9d1",
+                        "on-primary-fixed": "#131b2e",
+                        "secondary-fixed": "#d5e3fc",
+                        "error-container": "#93000a",
+                        "on-tertiary": "#003640",
+                        "on-error-container": "#ffdad6",
+                        "inverse-primary": "#565e74",
+                        "primary-container": "#0f172a",
+                        "surface-container-high": "#1c2b3c",
+                        "inverse-on-surface": "#233143",
+                        "on-tertiary-fixed-variant": "#004e5c",
+                        "on-surface": "#d4e4fa",
+                        "tertiary": "#4cd7f6",
+                        "surface-container-low": "#0d1c2d",
+                        "outline": "#909097",
+                        "on-secondary-fixed-variant": "#3a485b",
+                        "surface-container": "#122131",
+                        "surface-variant": "#273647",
+                        "surface-container-highest": "#273647",
+                        "on-background": "#d4e4fa",
+                        "inverse-surface": "#d4e4fa",
+                        "tertiary-fixed-dim": "#4cd7f6",
+                        "primary": "#bec6e0",
+                        "secondary": "#b9c7df",
+                        "on-surface-variant": "#c6c6cd",
+                        "surface": "#051424",
+                        "primary-fixed": "#dae2fd",
+                        "on-primary": "#283044",
+                        "on-primary-container": "#798098",
+                        "on-secondary-fixed": "#0d1c2e",
+                        "on-primary-fixed-variant": "#3f465c",
+                        "tertiary-fixed": "#acedff",
+                        "secondary-fixed-dim": "#b9c7df",
+                        "secondary-container": "#3c4a5e",
+                        "surface-tint": "#bec6e0",
+                        "tertiary-container": "#001b21",
+                        "background": "#051424",
+                        "on-tertiary-container": "#008da5",
+                        "on-error": "#690005",
+                        "error": "#ffb4ab"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "margin-mobile": "16px",
+                        "sm": "8px",
+                        "xl": "32px",
+                        "md": "16px",
+                        "lg": "24px",
+                        "xs": "4px",
+                        "margin-desktop": "40px",
+                        "gutter": "20px",
+                        "unit": "4px"
+                    },
+                    "fontFamily": {
+                        "headline-lg": ["Inter"],
+                        "label-sm": ["JetBrains Mono"],
+                        "body-sm": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "body-md": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "label-md": ["JetBrains Mono"],
+                        "headline-lg-mobile": ["Inter"],
+                        "body-lg": ["Inter"]
+                    },
+                    "fontSize": {
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "label-sm": ["12px", {"lineHeight": "14px", "letterSpacing": "0.04em", "fontWeight": "500"}],
+                        "body-sm": ["14px", {"lineHeight": "20px", "fontWeight": "400"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "label-md": ["14px", {"lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "500"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: #051424;
+            color: #d4e4fa;
+            font-family: 'Inter', sans-serif;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #45464d;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body class="overflow-hidden flex h-screen">
+<!-- Left Sidebar: Recent Chat Threads -->
+<aside class="h-screen w-64 flex flex-col border-r border-outline-variant bg-surface-container-low flex flex-col p-4">
+<div class="mb-8 flex items-center gap-3 px-2">
+<span class="font-headline-lg text-headline-lg font-bold text-primary">P</span>
+<span class="font-headline-md text-[18px] tracking-tight font-bold text-on-surface">Precision</span>
+</div><button class="flex items-center justify-center gap-sm w-full py-md mb-lg bg-primary text-on-primary font-bold rounded-lg hover:opacity-90 transition-all active:scale-[0.98] mb-6"><span class="material-symbols-outlined">add</span><span class="font-label-md text-label-md">New Chat</span></button>
+<div class="flex-grow flex flex-col gap-1 overflow-y-auto custom-scrollbar">
+<p class="font-label-sm text-label-sm text-outline mb-sm px-sm uppercase tracking-wider opacity-60">Recent Activity</p>
+<button class="w-full text-left p-3 rounded-lg bg-secondary-container/30 border border-outline-variant/30 transition-colors group">
+<p class="text-body-sm font-medium text-on-surface truncate">Team Lunch Coordination</p>
+<p class="text-[11px] text-on-surface-variant opacity-60 mt-1">Active Now</p>
+</button>
+<button class="w-full text-left p-3 rounded-lg hover:bg-surface-container-high transition-colors group">
+<p class="text-body-sm text-on-surface-variant group-hover:text-on-surface truncate">Q3 Financial Analysis</p>
+<p class="text-[11px] text-on-surface-variant opacity-40 mt-1">2h ago</p>
+</button>
+<button class="w-full text-left p-3 rounded-lg hover:bg-surface-container-high transition-colors group">
+<p class="text-body-sm text-on-surface-variant group-hover:text-on-surface truncate">Infrastructure Upgrade Plan</p>
+<p class="text-[11px] text-on-surface-variant opacity-40 mt-1">Yesterday</p>
+</button>
+<button class="w-full text-left p-3 rounded-lg hover:bg-surface-container-high transition-colors group">
+<p class="text-body-sm text-on-surface-variant group-hover:text-on-surface truncate">Market Expansion Strategy</p>
+<p class="text-[11px] text-on-surface-variant opacity-40 mt-1">Oct 24</p>
+</button>
+<button class="w-full text-left p-3 rounded-lg hover:bg-surface-container-high transition-colors group">
+<p class="text-body-sm text-on-surface-variant group-hover:text-on-surface truncate">API Documentation Review</p>
+<p class="text-[11px] text-on-surface-variant opacity-40 mt-1">Oct 23</p>
+</button>
+</div>
+<div class="mt-auto pt-4 border-t border-outline-variant/30 flex items-center gap-3 px-2">
+<img alt="User profile" class="w-8 h-8 rounded-full border border-outline-variant" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDGXTAuSNeFol15Mmo7NhF-h08SFSLv_FXEMtkWAUKwYE7cU_PrwYUsElqgxD5-0sp5818dcJFe1dJmIjirSYIsEiRQDzdgB3XUL3XCp2QeKlJJ4bby3KDaC0iuUV9ims7jAdGBJsn7WMIgbAe6GKZLsDXyF0hBsAXmSzrvM22xpjCSaMr08tRkZ4jZCw1crnEwBtpidDWY4mmaaIYIJr9SDw5_7mCFIDkV5JdFuIBKQxFP3FS3VEmLfxBzUni_Ep-WdpXHaDPWvl8"/>
+<div class="flex-grow overflow-hidden">
+<p class="text-label-md text-on-surface truncate">Admin User</p>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant text-[18px] cursor-pointer">settings</span>
+</div>
+</aside>
+<!-- Main Content Area -->
+<div class="flex-grow flex flex-col relative overflow-hidden">
+<!-- TopNavBar: Cleaned up Header -->
+<header class="w-full h-16 border-b border-outline-variant bg-surface flex justify-between items-center px-6"><div class="flex items-center gap-6"><h1 class="font-headline-md text-headline-md font-black text-on-surface tracking-tighter">Precision Chatbot</h1></div><div></div></header>
+<!-- Chat Workspace -->
+<main class="flex-grow flex flex-col overflow-hidden">
+<!-- Conversational Engine -->
+<section class="flex-grow flex flex-col bg-surface overflow-hidden relative items-center">
+<!-- Chat History Area -->
+<div class="flex-grow w-full overflow-y-auto custom-scrollbar p-6">
+<div class="max-w-2xl w-full mx-auto space-y-8">
+<!-- User Input -->
+<div class="flex flex-col items-end"><div class="flex flex-col items-start"><div class="bg-surface-container-high px-4 py-3 rounded-lg border border-outline-variant text-on-surface"><p class="font-body-md">Order food for the team lunch today.</p></div></div></div>
+<!-- System Response: Analysis -->
+<div class="flex flex-col items-start">
+<div class="w-full space-y-4"><div class="flex items-center gap-2 text-tertiary mb-4"><span class="material-symbols-outlined text-[20px]">psychology</span><span class="font-label-sm uppercase tracking-widest">System Brain</span></div><p class="font-body-md text-on-surface-variant mb-6">Retrieving team dietary data via RAG... Found 12 profiles with restrictions (2 Vegan, 1 Gluten-Free).</p><div class="space-y-6"><div class="flex justify-between items-center border-b border-outline-variant/20 pb-4"><div><h4 class="font-medium text-on-surface">Artisan Greens</h4><p class="text-body-sm text-on-surface-variant">Matches all dietary restrictions</p></div></div><div class="flex justify-between items-center border-b border-outline-variant/20 pb-4"><div><h4 class="font-medium text-on-surface">The Healthy Bowl</h4><p class="text-body-sm text-on-surface-variant">Top rated for group orders</p></div></div><div class="flex justify-between items-center"><div><h4 class="font-medium text-on-surface">Saffron Express</h4><p class="text-body-sm text-on-surface-variant">Quickest delivery for 12 PAX</p></div></div></div><p class="font-body-md text-tertiary mt-6">Would you like to proceed with Artisan Greens, or should we look at one of the other options?</p></div>
+</div>
+<!-- System Response: Final Confirmation (Centered & Prominent) -->
+<div class="flex flex-col items-start">
+<div class="w-full rounded-lg"><div class="flex flex-col items-start text-left py-6"><span class="material-symbols-outlined text-tertiary text-[32px] mb-2">check_circle</span><h3 class="font-headline-md text-on-surface mb-6">Artisan Greens</h3><div class="space-y-2 text-body-md text-on-surface-variant mb-8"><p>12x Artisan Salads</p><p>3x Gluten-Free Sides</p><p>2x Vegan Protein Add-ons</p></div></div></div>
+</div>
+</div>
+</div>
+<!-- Input Field -->
+<div class="absolute bottom-0 left-0 w-full p-lg bg-gradient-to-t from-background via-background/90 to-transparent z-40"><div class="max-w-2xl mx-auto relative group"><input class="block w-full bg-surface-container-lowest border border-outline-variant rounded-xl py-4 pl-4 pr-32 text-on-surface placeholder:text-on-secondary-container focus:ring-2 focus:ring-tertiary focus:border-transparent transition-all font-body-md" placeholder="Command input..." type="text"/><div class="absolute inset-y-0 right-0 flex items-center pr-md gap-sm"><button class="material-symbols-outlined text-on-surface-variant hover:text-tertiary transition-colors">mic</button><button class="bg-tertiary text-on-tertiary px-md py-sm rounded-lg flex items-center gap-xs hover:opacity-90 transition-opacity"><span class="font-bold font-label-md">SEND</span><span class="material-symbols-outlined text-[18px]">send</span></button></div></div></div>
+</section>
+</main>
+</div>
+<!-- Micro-interaction Script -->
+<script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const input = document.querySelector('input');
+            input.addEventListener('focus', () => {
+                input.parentElement.classList.add('scale-[1.01]');
+                input.parentElement.classList.add('transition-transform');
+            });
+            input.addEventListener('blur', () => {
+                input.parentElement.classList.remove('scale-[1.01]');
+            });
+        });
+    </script>
+</body></html>

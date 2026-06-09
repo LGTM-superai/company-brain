@@ -1,0 +1,236 @@
+<!DOCTYPE html><html class="dark" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-primary-container": "#798098",
+                        "on-primary-fixed": "#131b2e",
+                        "on-error-container": "#ffdad6",
+                        "primary-container": "#0f172a",
+                        "inverse-primary": "#565e74",
+                        "background": "#051424",
+                        "on-tertiary": "#003640",
+                        "on-surface": "#d4e4fa",
+                        "primary-fixed": "#dae2fd",
+                        "on-tertiary-fixed": "#001f26",
+                        "on-secondary-fixed": "#0d1c2e",
+                        "surface-dim": "#051424",
+                        "tertiary-fixed-dim": "#4cd7f6",
+                        "surface-container-lowest": "#010f1f",
+                        "error": "#ffb4ab",
+                        "tertiary-container": "#001b21",
+                        "on-tertiary-container": "#008da5",
+                        "surface-container-highest": "#273647",
+                        "secondary-fixed-dim": "#b9c7df",
+                        "secondary-container": "#3c4a5e",
+                        "surface-tint": "#bec6e0",
+                        "on-surface-variant": "#c6c6cd",
+                        "on-primary": "#283044",
+                        "inverse-on-surface": "#233143",
+                        "surface-container-low": "#0d1c2d",
+                        "secondary-fixed": "#d5e3fc",
+                        "primary": "#bec6e0",
+                        "on-background": "#d4e4fa",
+                        "tertiary": "#4cd7f6",
+                        "tertiary-fixed": "#acedff",
+                        "surface": "#051424",
+                        "surface-container-high": "#1c2b3c",
+                        "on-secondary-fixed-variant": "#3a485b",
+                        "inverse-surface": "#d4e4fa",
+                        "on-error": "#690005",
+                        "primary-fixed-dim": "#bec6e0",
+                        "on-primary-fixed-variant": "#3f465c",
+                        "surface-variant": "#273647",
+                        "surface-bright": "#2c3a4c",
+                        "outline-variant": "#45464d",
+                        "on-secondary": "#233144",
+                        "outline": "#909097",
+                        "surface-container": "#122131",
+                        "on-secondary-container": "#abb9d1",
+                        "secondary": "#b9c7df",
+                        "on-tertiary-fixed-variant": "#004e5c",
+                        "error-container": "#93000a"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "xl": "32px",
+                        "md": "16px",
+                        "sm": "8px",
+                        "margin-mobile": "16px",
+                        "margin-desktop": "40px",
+                        "unit": "4px",
+                        "gutter": "20px",
+                        "xs": "4px",
+                        "lg": "24px"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Inter"],
+                        "label-sm": ["JetBrains Mono"],
+                        "label-md": ["JetBrains Mono"],
+                        "body-lg": ["Inter"],
+                        "body-sm": ["Inter"],
+                        "headline-lg": ["Inter"],
+                        "display-lg": ["Inter"],
+                        "headline-md": ["Inter"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body {
+            background-color: #051424;
+            color: #d4e4fa;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #010f1f;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 10px;
+        }
+        .ai-border-accent {
+            border-left: 3px solid #4cd7f6;
+        }
+        .mesh-gradient-bg {
+            background: radial-gradient(at 0% 0%, rgba(76, 215, 246, 0.05) 0px, transparent 50%),
+                        radial-gradient(at 100% 100%, rgba(190, 198, 224, 0.05) 0px, transparent 50%);
+        }
+    </style>
+</head>
+<body class="flex h-screen w-full select-none">
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-0 h-full w-64 bg-surface-container-low border-r border-outline-variant flex flex-col p-md z-50">
+<div class="mb-lg">
+<div class="flex items-center gap-sm mb-xs">
+<div class="w-8 h-8 bg-tertiary flex items-center justify-center rounded">
+<span class="material-symbols-outlined text-on-tertiary text-[20px]">terminal</span>
+</div>
+<div>
+<h2 class="font-headline-sm text-headline-sm text-on-surface leading-tight">Enterprise</h2>
+<p class="font-label-sm text-label-sm text-on-surface-variant opacity-60">V3.4.0</p>
+</div>
+</div>
+</div>
+<button class="flex items-center justify-center gap-sm w-full py-md mb-lg bg-primary text-on-primary font-bold rounded-lg hover:opacity-90 transition-all active:scale-[0.98]"><span class="material-symbols-outlined">add</span><span class="font-label-md text-label-md">New Chat</span></button>
+<div class="flex-1 overflow-y-auto custom-scrollbar">
+<p class="font-label-sm text-label-sm text-outline mb-sm px-sm uppercase tracking-wider">Recent Threads</p>
+<nav class="space-y-1">
+<!-- Active Item -->
+<a class="flex items-center gap-sm p-sm text-primary font-bold bg-secondary-container rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined text-[18px]">history</span>
+<span class="font-label-md text-label-md truncate">Doc Update: API v2</span>
+</a>
+<a class="flex items-center gap-sm p-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined text-[18px]">history</span>
+<span class="font-label-md text-label-md truncate">S3 Sync</span>
+</a>
+<a class="flex items-center gap-sm p-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined text-[18px]">history</span>
+<span class="font-label-md text-label-md truncate">Meal Coordination</span>
+</a>
+<a class="flex items-center gap-sm p-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined text-[18px]">trending_up</span>
+<span class="font-label-md text-label-md truncate">Market Analysis</span>
+</a>
+<a class="flex items-center gap-sm p-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined text-[18px]">terminal</span>
+<span class="font-label-md text-label-md truncate">Repo Manager</span>
+</a>
+</nav>
+</div>
+<div class="mt-auto border-t border-outline-variant pt-md space-y-1">
+<a class="flex items-center gap-sm p-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined text-[18px]">help</span>
+<span class="font-label-md text-label-md">Help Center</span>
+</a>
+<a class="flex items-center gap-sm p-sm text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined text-[18px]">logout</span>
+<span class="font-label-md text-label-md">Log Out</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 ml-64 flex flex-col relative mesh-gradient-bg">
+<!-- TopNavBar -->
+<header class="w-full h-16 border-b border-outline-variant bg-surface flex justify-between items-center px-6"><div class="flex items-center gap-6"><h1 class="font-headline-md text-headline-md font-black text-on-surface tracking-tighter">Precision Chatbot</h1></div><div></div></header>
+<!-- Chat Workspace -->
+<div class="flex-1 overflow-y-auto p-lg flex flex-col gap-lg custom-scrollbar pb-32">
+<!-- User Prompt -->
+<div class="max-w-3xl w-full mx-auto self-end">
+<div class="bg-surface-container-highest p-md rounded-xl border border-outline-variant">
+<p class="font-body-md text-body-md text-on-surface">Update the security protocols document and sync it to the production bucket.</p>
+</div>
+</div>
+<!-- AI Response (RAG Output) -->
+<div class="max-w-3xl w-full mx-auto self-start flex flex-col gap-md"><div class="ai-border-accent bg-surface-container-low p-lg rounded-xl border border-outline-variant/30 space-y-md">
+<div class="flex items-center gap-sm text-tertiary">
+<span class="material-symbols-outlined text-[20px]">check_circle</span>
+<span class="font-label-md uppercase tracking-widest">Sync Complete</span>
+</div>
+<div class="space-y-sm">
+<div class="flex flex-col">
+<span class="text-outline font-label-sm uppercase text-[10px]">File</span>
+<span class="text-on-surface font-mono">security_protocols_v4.md</span>
+</div>
+<div class="flex flex-col">
+<span class="text-outline font-label-sm uppercase text-[10px]">Destination</span>
+<span class="text-on-surface font-mono text-sm italic">s3://enterprise-prod-docs/security/</span>
+</div>
+</div>
+<div class="pt-sm">
+<button class="text-tertiary hover:text-primary font-label-md flex items-center gap-xs transition-colors">
+<span class="material-symbols-outlined text-[18px]">open_in_new</span>
+<span>View in AWS Console</span>
+</button>
+</div>
+</div></div>
+<!-- Visualization / Graphic Element for Context -->
+<div class="max-w-3xl w-full mx-auto opacity-40"></div>
+</div>
+<!-- Input Bar (The Workbench) -->
+<div class="absolute bottom-0 left-0 w-full p-lg bg-gradient-to-t from-background via-background/90 to-transparent"><div class="max-w-3xl mx-auto relative"><textarea class="w-full bg-surface-container-lowest border border-outline-variant focus:border-tertiary focus:ring-1 focus:ring-tertiary rounded-xl p-md pr-16 text-on-surface font-body-md text-body-md resize-none shadow-2xl transition-all" placeholder="Enter command or documentation update..." rows="1"></textarea><div class="absolute right-sm top-1/2 -translate-y-1/2 flex items-center gap-sm"><button class="w-10 h-10 flex items-center justify-center bg-tertiary text-on-tertiary rounded-lg hover:opacity-90 active:scale-95 transition-all"><span class="material-symbols-outlined">send</span></button></div></div><div class="flex justify-center mt-sm"><p class="font-label-sm text-label-sm text-outline-variant">Command Center Engine V3.4.0 • Enterprise Security Enabled</p></div></div>
+</main>
+<script>
+        // Auto-expand textarea
+        const textarea = document.querySelector('textarea');
+        textarea.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+        });
+
+        // Simple click interaction for sidebar tabs
+        const navItems = document.querySelectorAll('aside nav a');
+        navItems.forEach(item => {
+            item.addEventListener('click', (e) => {
+                navItems.forEach(i => {
+                    i.classList.remove('text-primary', 'font-bold', 'bg-secondary-container');
+                    i.classList.add('text-on-surface-variant');
+                });
+                item.classList.add('text-primary', 'font-bold', 'bg-secondary-container');
+                item.classList.remove('text-on-surface-variant');
+            });
+        });
+    </script>
+</body></html>

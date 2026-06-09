@@ -7,12 +7,20 @@ export default async function CommandCenterPage() {
 
   return (
     <AppShell activePath="/">
-      <section className="page-heading">
+      <section className="page-heading command-topbar">
         <div>
-          <p className="eyebrow">Command Center</p>
-          <h1>Company Brain</h1>
+          <h1>Precision Chatbot</h1>
+          <p className="audit-note">Company Brain command center</p>
         </div>
-        <p className="audit-note">External writes log to #company-brain-actions</p>
+        <div className="topbar-actions" aria-label="Command center actions">
+          <span className="quiet-pill">Writes log to #company-brain-actions</span>
+          <button className="icon-button" type="button" aria-label="Notifications">
+            <span className="material-symbols-outlined">notifications</span>
+          </button>
+          <button className="icon-button" type="button" aria-label="Settings">
+            <span className="material-symbols-outlined">settings</span>
+          </button>
+        </div>
       </section>
 
       {data.error ? <div className="setup-banner">{data.error} Run `bun run seed` after setting MONGODB_URL.</div> : null}
