@@ -66,6 +66,9 @@ const KnowledgeNodeSchema = new Schema(
     x: { type: Number, required: true },
     y: { type: Number, required: true },
     links: { type: [String], default: [] },
+    metadata: { type: Schema.Types.Mixed, default: undefined },
+    indexedAt: { type: Date, default: undefined },
+    sourceId: { type: String, default: undefined },
   },
   { timestamps: true },
 );

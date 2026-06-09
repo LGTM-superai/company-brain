@@ -52,6 +52,9 @@ export type KnowledgeNode = {
   x: number;
   y: number;
   links: string[];
+  metadata?: Record<string, unknown>;
+  indexedAt?: string;
+  sourceId?: string;
 };
 
 export type DashboardData = {
@@ -118,6 +121,9 @@ export async function getDashboardData(): Promise<DashboardData> {
         x: node.x,
         y: node.y,
         links: node.links,
+        metadata: node.metadata,
+        indexedAt: node.indexedAt?.toISOString?.() ?? node.indexedAt,
+        sourceId: node.sourceId,
       })),
     };
   } catch (error) {

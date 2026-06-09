@@ -1,8 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useEffect, useState } from "react";
 import type { AgentEvent } from "@company-brain/shared";
 import type { DashboardAgent, DashboardConversation, DashboardMessage } from "../../lib/data";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Send, Mic, Bot, Wrench, Sparkles, ExternalLink } from "lucide-react";
 
 type ChatItem =
   | DashboardMessage
@@ -26,9 +32,16 @@ export function ChatInterface({
   const [messages, setMessages] = useState<ChatItem[]>(initialMessages);
   const [input, setInput] = useState("");
   const [isRunning, setIsRunning] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const activeConversation = conversations[0];
   const toolCount = useMemo(() => new Set(agents.flatMap((agent) => agent.tools)).size, [agents]);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
 
   async function submitMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -110,107 +123,136 @@ export function ChatInterface({
   }
 
   return (
-    <div className="command-grid">
-      <section className="conversation-sidebar panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">History</p>
-            <h2>Conversations</h2>
-          </div>
-        </div>
-
-        <div className="conversation-list">
-          {conversations.map((conversation, index) => (
-            <button
-              className={index === 0 ? "conversation-item active" : "conversation-item"}
-              key={conversation.conversationId}
-              type="button"
-            >
-              <strong>{conversation.title}</strong>
-              <span>{conversation.summary}</span>
-              <small>{conversation.updatedLabel}</small>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="chat-panel panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Active Thread</p>
-            <h2>{activeConversation?.title ?? "No conversations yet"}</h2>
-          </div>
-          <span className="quiet-pill">{agents.length} agents / {toolCount} tools</span>
-        </div>
-
-        <div className="message-list">
+    <section className="flex-grow flex flex-col overflow-hidden relative">
+      {/* Chat messages */}
+      <div ref={scrollRef} className="flex-grow overflow-y-auto p-6">
+        <div className="max-w-2xl w-full mx-auto space-y-6">
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center pt-32 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 mb-4">
+                <Sparkles className="h-8 w-8 text-primary" />
+              </div>
+              <h2 className="text-2xl font-semibold text-foreground mb-2">Company Brain</h2>
+              <p className="text-muted-foreground text-sm">
+                {agents.length} agents &middot; {toolCount} tools ready
+              </p>
+            </div>
+          )}
           {messages.map((message) => (
             <MessageBubble key={message.messageId} message={message} />
           ))}
+          {isRunning && <TypingIndicator />}
         </div>
+      </div>
 
-        <form className="chat-form" onSubmit={submitMessage}>
-          <input
+      {/* Input area */}
+      <div className="absolute bottom-0 left-0 w-full p-6 bg-gradient-to-t from-background via-background/95 to-transparent">
+        <form onSubmit={submitMessage} className="max-w-2xl mx-auto relative">
+          <Input
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder="Ask about tickets, docs, blockers, users, or external evidence..."
+            className="h-12 pl-4 pr-24 rounded-xl border-border bg-card text-foreground placeholder:text-muted-foreground focus-visible:ring-primary"
+            placeholder="Ask anything..."
+            type="text"
           />
-          <button type="submit" disabled={isRunning}>
-            {isRunning ? "Running" : "Send"}
-          </button>
-        </form>
-      </section>
-
-      <section className="agent-sidebar panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Agents</p>
-            <h2>Roster</h2>
+          <div className="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-accent cursor-pointer"
+            >
+              <Mic className="h-4 w-4" />
+            </Button>
+            <Button
+              type="submit"
+              disabled={isRunning}
+              size="sm"
+              className="h-8 gap-1 rounded-lg cursor-pointer"
+            >
+              <span className="text-xs font-semibold">{isRunning ? "..." : "Send"}</span>
+              <Send className="h-3.5 w-3.5" />
+            </Button>
           </div>
-        </div>
+        </form>
+      </div>
+    </section>
+  );
+}
 
-        <div className="agent-list">
-          {agents.map((agent) => (
-            <article className="agent-card" key={agent.agentId}>
-              <strong>{agent.name}</strong>
-              <span>{agent.owner}</span>
-              <p>{agent.purpose}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+function TypingIndicator() {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10">
+        <Bot className="h-4 w-4 text-primary" />
+      </div>
+      <div className="typing-indicator flex items-center gap-1 pt-2">
+        <span />
+        <span />
+        <span />
+      </div>
     </div>
   );
 }
 
 function MessageBubble({ message }: { message: ChatItem }) {
+  if (message.role === "user") {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-primary px-4 py-2.5 text-primary-foreground">
+          <p className="text-sm">{message.content}</p>
+        </div>
+      </div>
+    );
+  }
+
   if (message.role === "tool") {
     return (
-      <div className="tool-block">
-        <div className="tool-line">{message.content}</div>
-        {message.exaResults?.length ? (
-          <section className="exa-results">
-            <div className="exa-results-header">
-              <strong>Exa search results</strong>
-              <span>{message.exaResults.length} results</span>
+      <div className="flex items-start gap-3">
+        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-accent/10 flex-shrink-0">
+          <Wrench className="h-3.5 w-3.5 text-accent" />
+        </div>
+        <div className="flex-grow min-w-0 space-y-2">
+          <p className="text-xs font-mono text-accent uppercase tracking-wider">
+            {message.toolName ?? "tool"}
+          </p>
+          {message.exaResults?.length ? (
+            <div className="space-y-2">
+              {message.exaResults.map((result) => (
+                <Card key={result.url} className="bg-card border-border">
+                  <CardContent className="p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <strong className="text-sm text-foreground leading-tight">
+                        {result.title}
+                      </strong>
+                      <ExternalLink className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                      {result.summary}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground/60 mt-1 truncate">
+                      {result.url}
+                    </p>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
-            {message.exaResults.map((result) => (
-              <article className="exa-result" key={result.url}>
-                <strong>{result.title}</strong>
-                <p>{result.summary}</p>
-                <small>{result.publishedDate} / {result.url}</small>
-              </article>
-            ))}
-          </section>
-        ) : null}
+          ) : (
+            <p className="text-sm text-muted-foreground">{message.content}</p>
+          )}
+        </div>
       </div>
     );
   }
 
   return (
-    <article className={message.role === "user" ? "message user-message" : "message assistant-message"}>
-      <strong>{message.role === "user" ? "You" : "Company Brain"}</strong>
-      <p>{message.content}</p>
-    </article>
+    <div className="flex items-start gap-3">
+      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 flex-shrink-0">
+        <Bot className="h-4 w-4 text-primary" />
+      </div>
+      <div className="flex-grow min-w-0 pt-0.5">
+        <p className="text-sm text-foreground leading-relaxed">{message.content}</p>
+      </div>
+    </div>
   );
 }

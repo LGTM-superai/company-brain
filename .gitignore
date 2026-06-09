@@ -24,3 +24,6 @@ apps/web/tsconfig.tsbuildinfo
 # Local environment
 .env
 .env.local
+
+# claude
+.claude

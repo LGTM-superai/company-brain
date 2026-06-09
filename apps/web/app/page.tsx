@@ -6,16 +6,19 @@ export default async function CommandCenterPage() {
   const data = await getDashboardData();
 
   return (
-    <AppShell activePath="/">
-      <section className="page-heading">
-        <div>
-          <p className="eyebrow">Command Center</p>
-          <h1>Company Brain</h1>
+    <AppShell
+      activePath="/"
+      conversations={data.conversations.map((c) => ({
+        conversationId: c.conversationId,
+        title: c.title,
+        updatedLabel: c.updatedLabel,
+      }))}
+    >
+      {data.error ? (
+        <div className="m-4 border border-error/30 rounded-lg bg-error/5 p-3 text-error text-sm">
+          {data.error} Run `bun run seed` after setting MONGODB_URL.
         </div>
-        <p className="audit-note">External writes log to #company-brain-actions</p>
-      </section>
-
-      {data.error ? <div className="setup-banner">{data.error} Run `bun run seed` after setting MONGODB_URL.</div> : null}
+      ) : null}
 
       <ChatInterface
         conversations={data.conversations}
