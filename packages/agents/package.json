@@ -1,0 +1,13 @@
+{
+  "name": "@company-brain/agents",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@company-brain/shared": "workspace:*",
+    "@company-brain/tools": "workspace:*"
+  }
+}

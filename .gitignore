@@ -12,3 +12,10 @@ obsidian-api/
 # Common local clutter
 .DS_Store
 Thumbs.db
+
+# Dependencies and build output
+node_modules/
+bun.lockb
+.next/
+apps/web/.next/
+apps/web/out/

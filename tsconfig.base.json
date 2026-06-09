@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowJs": false,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "baseUrl": ".",
+    "paths": {
+      "@company-brain/agents": ["packages/agents/src/index.ts"],
+      "@company-brain/tools": ["packages/tools/src/index.ts"],
+      "@company-brain/shared": ["packages/shared/src/index.ts"]
+    }
+  },
+  "include": [
+    "apps/**/*.ts",
+    "apps/**/*.tsx",
+    "packages/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "wireframe",
+    "scout",
+    "agno",
+    "obsidian-api"
+  ]
+}
