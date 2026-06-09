@@ -1,0 +1,8 @@
+aws_region    = "us-east-1"
+bucket_name   = "company-brain-lgtm-CHANGEME" # must be globally unique
+force_destroy = true                          # POC: allow easy teardown
+
+# Amazon DocumentDB (opt-in — provisions a paid cluster in your default VPC)
+# create_docdb          = true
+# docdb_master_password = "CHANGE-ME-8-to-100-chars"
+# docdb_allowed_cidr    = ["10.0.0.0/8"]      # CIDR of your app subnet/VPC

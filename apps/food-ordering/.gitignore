@@ -1,0 +1,20 @@
+# secrets & local state
+.env
+.brain/
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# terraform — state can contain plaintext secrets (IAM access keys). Never commit.
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+.terraform.lock.hcl
