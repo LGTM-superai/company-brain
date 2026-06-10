@@ -1,7 +1,10 @@
 import { NextResponse, after } from "next/server";
-import type { AgentEvent, ExaUseCase } from "@company-brain/shared";
+import type { AgentEvent, ExaUseCase, ToolName, RepoMonitor } from "@company-brain/shared";
 import { connectMongo } from "../../../lib/mongodb";
 import { ConversationModel, MessageModel, ExaRunModel } from "../../../lib/models";
+import { routeMessage } from "../../../lib/router";
+import { generateSlackMessage } from "../../../lib/generate-slack-message";
+import { sendSlackMessage, toolRegistry } from "@company-brain/tools";
 import {
   queryExaVerdict,
   queryExaSearch,
@@ -18,13 +21,10 @@ const EXA_USE_CASE_PATTERNS: Record<ExaUseCase, RegExp> = {
   news: /news|market|competitor|recent.*(article|report)|industry/i,
 };
 
-const GENERIC_EXA_PATTERN = /exa|verify|external|docs|vulnerability|public|block/i;
-
 function detectExaUseCase(message: string): ExaUseCase | null {
   for (const [useCase, pattern] of Object.entries(EXA_USE_CASE_PATTERNS)) {
     if (pattern.test(message)) return useCase as ExaUseCase;
   }
-  if (GENERIC_EXA_PATTERN.test(message)) return "research";
   return null;
 }
 
@@ -52,6 +52,11 @@ export async function POST(request: Request) {
       order: 0,
     }));
 
+  const priorMessages = await MessageModel.find({ conversationId })
+    .sort({ order: 1 })
+    .select({ role: 1, content: 1, toolName: 1 })
+    .lean();
+
   const lastMessage = await MessageModel.findOne({ conversationId })
     .sort({ order: -1 })
     .select({ order: 1 })
@@ -66,63 +71,51 @@ export async function POST(request: Request) {
     order: nextOrder++,
   });
 
-  const message = rawMessage.toLowerCase();
+  const conversationHistory = priorMessages
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => m.content);
 
-  const exaUseCase = detectExaUseCase(message);
-  const shouldShowRepos = /repo monitor|cve|vulnerability monitor|package\.json|dependencies audit/i.test(message);
-  const shouldUpdate = /move|update|send|assign|change|post/i.test(message);
+  const routed = await routeMessage(rawMessage, conversationHistory);
 
-  const events: AgentEvent[] = [
-    { type: "tool_call", tool: "queryNotion" },
-    { type: "tool_call", tool: "querySlack" },
-  ];
+  const events: AgentEvent[] = [];
 
-  if (message.includes("github") || message.includes("code")) {
-    events.push({ type: "tool_call", tool: "queryGithub" });
-  }
+  let slackSendResult: { ok?: boolean; channel?: string } | null = null;
 
-  if (shouldShowRepos) {
-    events.push(
-      { type: "tool_call", tool: "queryRepos" },
-      {
-        type: "repo_monitors",
-        monitors: [
-          {
-            owner: "myorg",
-            repo: "web-app",
-            monitorId: "mon_abc123",
-            packages: ["react", "next", "express", "jsonwebtoken"],
-            slackChannelId: "C0123ABC456",
-            severityThreshold: "high",
-            status: "active",
-            createdAt: "2026-06-01T10:00:00.000Z",
-          },
-          {
-            owner: "myorg",
-            repo: "api-service",
-            monitorId: "mon_def456",
-            packages: ["fastify", "prisma", "zod", "bcrypt"],
-            slackChannelId: "C0123ABC456",
-            severityThreshold: "critical",
-            status: "active",
-            createdAt: "2026-06-03T14:30:00.000Z",
-          },
-          {
-            owner: "myorg",
-            repo: "legacy-dashboard",
-            monitorId: "mon_ghi789",
-            packages: ["angular", "lodash", "moment"],
-            slackChannelId: "C0B8VPAUNN9",
-            severityThreshold: "all",
-            status: "paused",
-            createdAt: "2026-05-20T08:00:00.000Z",
-          },
-        ],
-      },
-    );
+  for (const tool of routed.tools) {
+    if (tool === "queryRepos") {
+      events.push({ type: "tool_call", tool: "queryRepos" });
+      try {
+        const result = await toolRegistry.queryRepos.run({}, {});
+        if (result.ok && result.data) {
+          const monitors = (result.data as { monitors: RepoMonitor[] }).monitors;
+          events.push({ type: "repo_monitors", monitors });
+        }
+      } catch {
+        // queryRepos failed — no monitors to show
+      }
+    } else if (tool === "queryExa") {
+      // skip here — handled below with use-case detection
+    } else if (tool === "updateSlack") {
+      events.push({ type: "tool_call", tool: "updateSlack" });
+      try {
+        const generated = await generateSlackMessage(rawMessage, conversationHistory);
+        slackSendResult = await sendSlackMessage({
+          channel: "actions",
+          text: generated.text,
+          tagUser: generated.targetUser ?? undefined,
+        });
+      } catch {
+        slackSendResult = { ok: false };
+      }
+    } else {
+      events.push({ type: "tool_call", tool: tool as ToolName });
+    }
   }
 
   let exaRunId: string | null = null;
+  const exaUseCase = routed.tools.includes("queryExa")
+    ? (detectExaUseCase(rawMessage.toLowerCase()) ?? "research")
+    : null;
 
   if (exaUseCase) {
     exaRunId = `exa-run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -141,26 +134,27 @@ export async function POST(request: Request) {
     );
   }
 
-  if (shouldUpdate) {
-    events.push({ type: "tool_call", tool: "updateNotion" }, { type: "tool_call", tool: "updateSlack" });
-  }
-
+  const hasUpdate = routed.tools.some((t) => t.startsWith("update"));
   events.push({
     type: "assistant_message",
     content: exaUseCase
       ? "Searching the web for live results — I'll update this thread when they arrive."
-      : shouldUpdate
-        ? "I found the matching source context, prepared the update, and logged the simulated action to #company-brain-actions."
-        : shouldShowRepos
-          ? "I queried the CVE monitoring service and returned the current repo registrations. Each monitor tracks dependencies from the repo's package.json and alerts the configured Slack channel when vulnerabilities meet the severity threshold."
-          : "I checked the relevant company context and returned the most relevant current answer with source-aware routing.",
+      : slackSendResult?.ok
+        ? `Message sent to #${slackSendResult.channel}.`
+        : slackSendResult && !slackSendResult.ok
+          ? "Failed to send Slack message — check bot token and channel permissions."
+          : hasUpdate
+            ? "I found the matching source context, prepared the update, and logged the action."
+            : routed.tools.includes("queryRepos")
+              ? "I queried the CVE monitoring service and returned the current repo registrations."
+              : "I checked the relevant company context and returned the most relevant current answer with source-aware routing.",
   });
 
   events.push({ type: "done" });
 
   await persistAgentEvents(conversationId, nextOrder, events);
 
-  conversation.summary = summarizeRequest(rawMessage, shouldUpdate, !!exaUseCase);
+  conversation.summary = summarizeRequest(rawMessage, hasUpdate, !!exaUseCase);
   conversation.updatedLabel = "Just now";
   await conversation.save();
 

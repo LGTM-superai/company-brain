@@ -17,13 +17,30 @@ export async function GET(
     .lean();
 
   return NextResponse.json({
-    messages: messages.map((m) => ({
+    messages: messages.map((m) => JSON.parse(JSON.stringify({
       messageId: m.messageId,
       role: m.role,
       content: m.content,
       toolName: m.toolName,
-      exaResults: m.exaResults,
-      repoMonitors: m.repoMonitors,
-    })),
+      exaResults: m.exaResults?.map((r: Record<string, unknown>) => ({
+        title: r.title,
+        url: r.url,
+        summary: r.summary,
+        publishedDate: r.publishedDate,
+      })),
+      repoMonitors: m.repoMonitors?.map((r: Record<string, unknown>) => ({
+        owner: r.owner,
+        repo: r.repo,
+        monitorId: r.monitorId,
+        packages: r.packages,
+        slackChannelId: r.slackChannelId,
+        severityThreshold: r.severityThreshold,
+        status: r.status,
+        createdAt: r.createdAt,
+      })),
+      exaVerdict: m.exaVerdict,
+      exaCVE: m.exaCVE,
+      exaNews: m.exaNews,
+    }))),
   });
 }
