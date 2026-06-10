@@ -3,7 +3,7 @@ import { Toaster } from "sonner";
 import "./globals.css";
 
 export const metadata = {
-  title: "Insider AI | Command Center",
+  title: "Insider AI",
   description: "AI-powered command center for your company brain.",
 };
 
