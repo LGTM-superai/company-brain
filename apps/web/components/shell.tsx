@@ -20,10 +20,16 @@ export function AppShell({
   activePath,
   children,
   conversations,
+  activeConversationId,
+  onSelectConversation,
+  onNewChat,
 }: {
   activePath: string;
   children: ReactNode;
   conversations?: { conversationId: string; title: string; updatedLabel: string }[];
+  activeConversationId?: string | null;
+  onSelectConversation?: (conversationId: string) => void;
+  onNewChat?: () => void;
 }) {
   return (
     <TooltipProvider delayDuration={200}>
@@ -37,7 +43,7 @@ export function AppShell({
           </span>
         </div>
 
-        <Button className="w-full mb-4 gap-2 cursor-pointer" size="lg">
+        <Button className="w-full mb-4 gap-2 cursor-pointer" size="lg" onClick={onNewChat}>
           <Plus className="h-4 w-4" />
           New Chat
         </Button>
@@ -76,13 +82,14 @@ export function AppShell({
             </p>
             <ScrollArea className="flex-grow">
               <div className="flex flex-col gap-1 pr-3">
-                {conversations.map((conv, index) => (
+                {conversations.map((conv) => (
                   <button
                     key={conv.conversationId}
                     type="button"
+                    onClick={() => onSelectConversation?.(conv.conversationId)}
                     className={cn(
                       "w-full text-left px-3 py-2.5 rounded-lg transition-colors duration-200 cursor-pointer",
-                      index === 0
+                      conv.conversationId === activeConversationId
                         ? "bg-sidebar-accent"
                         : "hover:bg-sidebar-accent"
                     )}

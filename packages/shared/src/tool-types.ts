@@ -6,6 +6,7 @@ export type ToolName =
   | "queryGithub"
   | "updateGithub"
   | "queryExa"
+  | "queryRepos"
   | "makePayment"
   | "buySomething";
 
