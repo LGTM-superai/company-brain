@@ -8,12 +8,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Plus, Terminal, GitGraph, Users, Settings, Sparkles, Trash2 } from "lucide-react";
+import { Plus, Terminal, GitGraph, Users, Settings, Sparkles, Shield, Trash2 } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "Command Center", icon: Terminal },
   { href: "/knowledge-graph", label: "Knowledge Graph", icon: GitGraph },
   { href: "/users", label: "Users", icon: Users },
+  { href: "/vulnerability", label: "Vulnerability", icon: Shield },
 ];
 
 export function AppShell({
