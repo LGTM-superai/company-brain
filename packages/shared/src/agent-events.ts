@@ -50,6 +50,35 @@ export type RepoMonitor = {
   createdAt: string;
 };
 
+export type BudgetAllocationEvent = {
+  projectId: string;
+  amountCents: number;
+  currency: string;
+  cardId: string;
+  status: "active" | "created";
+};
+
+export type FoodRecommendationEvent = {
+  restaurantName: string;
+  url: string;
+  reason: string;
+  estimatedCostPerHead: string;
+};
+
+export type FoodOrderEvent = {
+  teamName: string;
+  headcount: number;
+  dietary: string[];
+  allergens: string[];
+  recommendations: FoodRecommendationEvent[];
+  budgetPerHeadCents: number;
+  payment?: {
+    totalCents: number;
+    paymentIntentId: string;
+    status: string;
+  };
+};
+
 export type AgentEvent =
   | {
       type: "tool_call";
@@ -89,6 +118,15 @@ export type AgentEvent =
   | {
       type: "repo_monitors";
       monitors: RepoMonitor[];
+    }
+  | {
+      type: "budget_allocated";
+      allocations: BudgetAllocationEvent[];
+      totalCents: number;
+    }
+  | {
+      type: "food_order";
+      order: FoodOrderEvent;
     }
   | {
       type: "assistant_message";

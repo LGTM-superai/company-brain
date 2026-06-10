@@ -8,7 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Plus, Terminal, GitGraph, Users, Settings, Sparkles, Shield } from "lucide-react";
+import { Plus, Terminal, GitGraph, Users, Settings, Sparkles, Shield, Trash2 } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "Command Center", icon: Terminal },
@@ -24,6 +24,7 @@ export function AppShell({
   activeConversationId,
   onSelectConversation,
   onNewChat,
+  onDeleteConversation,
 }: {
   activePath: string;
   children: ReactNode;
@@ -31,10 +32,11 @@ export function AppShell({
   activeConversationId?: string | null;
   onSelectConversation?: (conversationId: string) => void;
   onNewChat?: () => void;
+  onDeleteConversation?: (conversationId: string) => void;
 }) {
   return (
     <TooltipProvider delayDuration={200}>
-      <aside className="h-screen w-64 flex-shrink-0 flex flex-col border-r border-sidebar-border bg-sidebar p-4">
+      <aside className="h-screen w-72 flex-shrink-0 flex flex-col border-r border-sidebar-border bg-sidebar p-4">
         <div className="mb-6 flex items-center gap-3 px-2">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
             <Sparkles className="h-5 w-5 text-primary-foreground" />
@@ -77,29 +79,43 @@ export function AppShell({
         <Separator className="mb-4 bg-sidebar-border" />
 
         {conversations && conversations.length > 0 && (
-          <div className="flex-grow flex flex-col min-h-0">
+          <div className="flex-grow flex flex-col min-h-0 overflow-hidden">
             <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2 px-2">
               Recent
             </p>
             <ScrollArea className="flex-grow">
-              <div className="flex flex-col gap-1 pr-3">
+              <div className="flex flex-col gap-1">
                 {conversations.map((conv) => (
-                  <button
+                  <div
                     key={conv.conversationId}
-                    type="button"
-                    onClick={() => onSelectConversation?.(conv.conversationId)}
                     className={cn(
-                      "w-full text-left px-3 py-2.5 rounded-lg transition-colors duration-200 cursor-pointer",
+                      "group grid grid-cols-[1fr_24px] items-center gap-1 px-3 py-2.5 rounded-lg transition-colors duration-200",
                       conv.conversationId === activeConversationId
                         ? "bg-sidebar-accent"
                         : "hover:bg-sidebar-accent"
                     )}
                   >
-                    <p className="text-sm text-sidebar-foreground truncate">{conv.title}</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      {conv.updatedLabel}
-                    </p>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => onSelectConversation?.(conv.conversationId)}
+                      className="min-w-0 text-left cursor-pointer"
+                    >
+                      <p className="text-sm text-sidebar-foreground truncate">{conv.title}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">
+                        {conv.updatedLabel}
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteConversation?.(conv.conversationId);
+                      }}
+                      className="w-6 h-6 flex items-center justify-center text-muted-foreground hover:text-red-500 transition-colors duration-200 cursor-pointer rounded"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 ))}
               </div>
             </ScrollArea>
