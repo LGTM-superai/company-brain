@@ -1,12 +1,14 @@
 export type ToolName =
   | "queryNotion"
   | "updateNotion"
+  | "createNotionTicket"
   | "querySlack"
   | "updateSlack"
   | "queryGithub"
   | "updateGithub"
   | "queryExa"
   | "queryRepos"
+  | "queryKnowledgeBase"
   | "makePayment"
   | "buySomething";
 

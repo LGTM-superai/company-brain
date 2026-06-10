@@ -8,6 +8,7 @@
   },
   "dependencies": {
     "@company-brain/shared": "workspace:*",
+    "@notionhq/client": "^2.2.0",
     "@slack/web-api": "^7.0.0",
     "exa-js": "^2.13.0",
     "stripe": "^17.0.0"

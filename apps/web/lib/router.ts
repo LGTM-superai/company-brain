@@ -15,7 +15,8 @@ const AVAILABLE_TOOLS = [
   { name: "queryGithub", description: "Search GitHub repos, PRs, issues, code" },
   { name: "queryExa", description: "Search the public web for verification, research, CVEs, or news" },
   { name: "queryRepos", description: "Check repo dependency monitors and CVE alerts" },
-  { name: "updateNotion", description: "Create or update Notion pages/databases" },
+  { name: "updateNotion", description: "Update existing Notion sprint board ticket fields or agent notes" },
+  { name: "createNotionTicket", description: "Create a new ticket on the Notion sprint board" },
   { name: "updateSlack", description: "Send Slack messages or notifications" },
   { name: "updateGithub", description: "Create PRs, issues, or push code changes" },
   { name: "makePayment", description: "Set or distribute budget to projects via Stripe virtual cards" },
@@ -104,6 +105,9 @@ function fallbackRoute(message: string): RoutedTools {
   if (/verify|fact.?check|cve|vulnerability|news|docs|tutorial/i.test(lower)) tools.push("queryExa");
   if (/move|update|send|assign|change|post/i.test(lower)) {
     tools.push("updateNotion", "updateSlack");
+  }
+  if (/create.*ticket|new.*ticket|add.*task|file.*ticket/i.test(lower)) {
+    tools.push("createNotionTicket");
   }
   if (/budget|allocat|distribute.*fund|spending.*limit/i.test(lower)) {
     tools.push("makePayment");

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import {
+  generateText,
   streamText,
   stepCountIs,
   tool,
@@ -8,17 +9,35 @@ import {
 import { z } from "zod";
 import type {
   AgentEvent,
+  AgentId,
+  AgentPlan,
   BudgetAllocationEvent,
   FoodOrderEvent,
+  PlanStep,
   RepoMonitor,
   ToolName,
 } from "@company-brain/shared";
 import { users, resolveAssignee, type PersonId } from "@company-brain/shared";
 import { toolRegistry } from "@company-brain/tools";
+import {
+  ROUTER_PROMPT,
+  SEARCHER_PROMPT,
+  UPDATER_PROMPT,
+  CODER_PROMPT,
+  PAYMENTS_PROMPT,
+} from "@company-brain/agents";
 import { getRuntimeModel } from "../../../lib/ai-model";
 import { connectMongo } from "../../../lib/mongodb";
 import { MessageModel } from "../../../lib/models";
-import { queryExaVerdict as queryHarborBeanExaVerdict } from "../../../lib/exa-runtime";
+import {
+  queryExaVerdict as queryHarborBeanExaVerdict,
+  queryExaCVE,
+  queryExaCVEFast,
+  queryExaNews,
+  queryExaNewsFast,
+  queryExaSearch,
+  queryExaSearchFast,
+} from "../../../lib/exa-runtime";
 import { HARBOR_BEAN_PROJECT } from "../../../lib/notion-runtime";
 import {
   queryMcpNotionTickets,
@@ -44,14 +63,9 @@ import {
   type TicketFieldChanges,
 } from "../../../lib/run-history";
 import { gmt8TodayFromNow } from "../../../lib/time";
-import {
-  queryExaCVE,
-  queryExaCVEFast,
-  queryExaNews,
-  queryExaNewsFast,
-  queryExaSearch,
-  queryExaSearchFast,
-} from "../../../../../exa-runtime";
+import { runSpecialist } from "../../../lib/agent-delegation";
+import { queryKnowledgeBase } from "../../../lib/knowledge-base";
+import { searchDocuments, fetchDocumentContent, listBucketDocuments } from "../../../lib/s3-retrieval";
 
 export const runtime = "nodejs";
 
@@ -66,6 +80,8 @@ type SlackChannelPurpose =
   | "engineering"
   | "vulnerability-monitoring"
   | "company-brain-actions";
+
+// ── Zod schemas ────────────────────────────────────────────────────────────
 
 const ticketFieldChangesSchema = z.object({
   name: z.string().optional(),
@@ -117,6 +133,8 @@ const updateSlackInputSchema = z.object({
 
 type UpdateSlackToolInput = z.infer<typeof updateSlackInputSchema>;
 
+// ── POST handler ───────────────────────────────────────────────────────────
+
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as ChatRequestBody;
   const rawMessage = body.message?.trim() ?? "";
@@ -163,30 +181,35 @@ export async function POST(request: Request) {
       send("meta", { conversationId });
 
       try {
+        const sharedContext = {
+          conversationId,
+          approvalGranted,
+          pendingAction,
+          events,
+          deepSearch: body.deepSearch ?? false,
+          send,
+          nextOrderRef: {
+            get: () => nextOrder,
+            set: (value: number) => {
+              nextOrder = value;
+            },
+          },
+        };
+
         const result = streamText({
           model: getRuntimeModel(),
-          system: systemPrompt({ pendingAction, approvalGranted }),
+          system: routerSystemPrompt({ pendingAction, approvalGranted }),
           messages: modelMessages,
-          tools: buildTools({
-            conversationId,
-            approvalGranted,
-            pendingAction,
-            events,
-            deepSearch: body.deepSearch ?? false,
-            nextOrderRef: {
-              get: () => nextOrder,
-              set: (value) => {
-                nextOrder = value;
-              },
-            },
-          }),
+          tools: buildDelegationTools(sharedContext),
           toolChoice,
-          stopWhen: stepCountIs(8),
-          maxOutputTokens: 900,
+          stopWhen: stepCountIs(6),
+          maxOutputTokens: 600,
           experimental_onToolCallStart: async (event) => {
             const toolName = event.toolCall.toolName as ToolName;
-            send("tool_call", { tool: toolName });
-            events.push({ type: "tool_call", tool: toolName, args: event.toolCall.input });
+            const args = event.toolCall.input as Record<string, unknown> | undefined;
+            const query = args?.query ?? args?.task ?? args?.ticket ?? args?.action ?? "";
+            send("tool_call", { tool: toolName, query });
+            events.push({ type: "tool_call", tool: toolName, args });
             const messageId = await persistToolCall(
               conversationId,
               toolName,
@@ -197,10 +220,23 @@ export async function POST(request: Request) {
           },
           experimental_onToolCallFinish: async (event) => {
             const messageId = toolMessageIds.get(event.toolCall.toolCallId);
+            const toolName = event.toolCall.toolName as string;
+            const isDelegation = toolName.startsWith("delegateTo") || toolName === "proposePlan";
             if (event.success) {
               await persistToolResult(messageId, event.output, event.durationMs);
+              if (!isDelegation) {
+                const output = event.output as Record<string, unknown> | undefined;
+                const summary = output?.summary ?? output?.message ?? output?.text ?? "";
+                if (summary) {
+                  send("tool_done", { tool: toolName, summary: String(summary).slice(0, 200) });
+                }
+              }
             } else {
               await persistToolFailure(messageId, event.error, event.durationMs);
+              if (!isDelegation) {
+                const errMsg = typeof event.error === "string" ? event.error : "Tool failed";
+                send("tool_done", { tool: toolName, summary: errMsg, error: true });
+              }
             }
           },
         });
@@ -253,25 +289,202 @@ export async function POST(request: Request) {
   });
 }
 
-function buildTools({
-  conversationId,
-  approvalGranted,
-  pendingAction,
-  events,
-  deepSearch,
-  nextOrderRef,
-}: {
+// ── Delegation tools (router level) ───────────────────────────────────────
+
+type SharedContext = {
   conversationId: string;
   approvalGranted: boolean;
   pendingAction: PendingAction | null;
   events: AgentEvent[];
   deepSearch: boolean;
+  send: (event: string, data: unknown) => void;
   nextOrderRef: { get: () => number; set: (value: number) => void };
-}) {
+  currentPlanId?: string;
+  planSteps?: PlanStep[];
+};
+
+function emitStepStart(ctx: SharedContext, agentId: AgentId) {
+  if (!ctx.currentPlanId || !ctx.planSteps) return;
+  const step = ctx.planSteps.find((s) => s.agent === agentId && s.status === "pending");
+  if (step) {
+    step.status = "running";
+    ctx.send("agent_event", { type: "plan_step_start", planId: ctx.currentPlanId, stepId: step.id });
+  }
+}
+
+function emitStepDone(ctx: SharedContext, agentId: AgentId, success: boolean) {
+  if (!ctx.currentPlanId || !ctx.planSteps) return;
+  const step = ctx.planSteps.find((s) => s.agent === agentId && s.status === "running");
+  if (step) {
+    step.status = success ? "done" : "failed";
+    ctx.send("agent_event", { type: "plan_step_done", planId: ctx.currentPlanId, stepId: step.id, success });
+  }
+}
+
+function buildDelegationTools(ctx: SharedContext) {
+  return {
+    proposePlan: tool({
+      description:
+        "ALWAYS call this FIRST before any delegation. Propose a structured execution plan showing which agents and tools will be used. This lets the user see the plan before execution begins.",
+      inputSchema: z.object({
+        reasoning: z.string().describe("1-2 sentence explanation of your approach"),
+        steps: z.array(z.object({
+          agent: z.enum(["searcher", "updater", "coder", "paymentsManager"]).describe("Which agent handles this step"),
+          tool: z.enum([
+            "queryNotion", "updateNotion", "createNotionTicket", "querySlack", "updateSlack",
+            "queryGithub", "updateGithub", "queryExa", "queryRepos",
+            "queryKnowledgeBase", "makePayment", "buySomething",
+          ]).describe("Primary tool for this step"),
+          description: z.string().describe("What this step does (user-facing, concise)"),
+        })).min(1).max(6).describe("Ordered steps in the plan"),
+      }),
+      execute: async (input) => {
+        const planId = `plan-${Date.now()}`;
+        const steps: PlanStep[] = input.steps.map((s, i) => ({
+          id: `${planId}-step-${i}`,
+          agent: s.agent as AgentId,
+          tool: s.tool as ToolName,
+          description: s.description,
+          status: "pending" as const,
+        }));
+
+        const plan: AgentPlan = {
+          planId,
+          reasoning: input.reasoning,
+          steps,
+          status: "executing",
+        };
+
+        ctx.currentPlanId = planId;
+        ctx.planSteps = steps;
+        ctx.send("agent_event", { type: "plan_proposed", plan });
+
+        return {
+          ok: true,
+          planId,
+          message: "Plan displayed to user. Now execute ONLY the delegation tools listed in your plan, then write a final text summary. Do NOT call proposePlan again.",
+        };
+      },
+    }),
+    delegateToSearcher: tool({
+      description:
+        "Delegate to the Searcher agent for read-only data retrieval from Notion sprint board, Slack channels, GitHub repos, Exa web search, and repo monitors. Use when gathering information or answering questions about current state.",
+      inputSchema: z.object({
+        query: z.string().describe("The search query or question to answer"),
+        sources: z
+          .array(z.enum(["notion", "slack", "github", "exa", "repos"]))
+          .optional()
+          .describe("Preferred data sources to query"),
+      }),
+      execute: async (input) => {
+        emitStepStart(ctx, "searcher");
+        ctx.send("agent_event", { type: "agent_delegation", agent: "searcher", query: input.query });
+        const result = await runSpecialist({
+          agentId: "searcher",
+          systemPrompt: buildSearcherSystemPrompt(ctx),
+          tools: buildSearcherTools(ctx),
+          query: input.query,
+          conversationId: ctx.conversationId,
+          events: ctx.events,
+          send: ctx.send,
+          approvalGranted: false,
+          pendingAction: null,
+        });
+        emitStepDone(ctx, "searcher", result.ok);
+        return result;
+      },
+    }),
+    delegateToUpdater: tool({
+      description:
+        "Delegate to the Updater agent for mutations: updating Notion tickets, posting Slack messages, or GitHub changes. All mutations require user approval.",
+      inputSchema: z.object({
+        task: z.string().describe("What to update and why"),
+        context: z.string().optional().describe("Relevant context from prior search results"),
+      }),
+      execute: async (input) => {
+        emitStepStart(ctx, "updater");
+        ctx.send("agent_event", { type: "agent_delegation", agent: "updater", task: input.task });
+        const result = await runSpecialist({
+          agentId: "updater",
+          systemPrompt: buildUpdaterSystemPrompt(ctx),
+          tools: buildUpdaterTools(ctx),
+          query: `${input.task}${input.context ? `\n\nContext: ${input.context}` : ""}`,
+          conversationId: ctx.conversationId,
+          events: ctx.events,
+          send: ctx.send,
+          approvalGranted: ctx.approvalGranted,
+          pendingAction: ctx.pendingAction,
+        });
+        emitStepDone(ctx, "updater", result.ok || !!result.requiresApproval);
+        return result;
+      },
+    }),
+    delegateToCoder: tool({
+      description:
+        "Delegate to the Coder agent for GitHub, code, PR, implementation, and debugging tasks.",
+      inputSchema: z.object({
+        task: z.string().describe("The coding or GitHub task"),
+      }),
+      execute: async (input) => {
+        emitStepStart(ctx, "coder");
+        ctx.send("agent_event", { type: "agent_delegation", agent: "coder", task: input.task });
+        const result = await runSpecialist({
+          agentId: "coder",
+          systemPrompt: CODER_PROMPT,
+          tools: buildCoderTools(ctx),
+          query: input.task,
+          conversationId: ctx.conversationId,
+          events: ctx.events,
+          send: ctx.send,
+          approvalGranted: ctx.approvalGranted,
+          pendingAction: ctx.pendingAction,
+        });
+        emitStepDone(ctx, "coder", result.ok);
+        return result;
+      },
+    }),
+    delegateToPayments: tool({
+      description:
+        "Delegate to the Payments Manager for budget allocation, food ordering, and purchasing workflows.",
+      inputSchema: z.object({
+        task: z.string().describe("The payment or purchasing request"),
+      }),
+      execute: async (input) => {
+        emitStepStart(ctx, "paymentsManager");
+        ctx.send("agent_event", {
+          type: "agent_delegation",
+          agent: "paymentsManager",
+          task: input.task,
+        });
+        const result = await runSpecialist({
+          agentId: "paymentsManager",
+          systemPrompt: PAYMENTS_PROMPT,
+          tools: buildPaymentsTools(ctx),
+          query: input.task,
+          conversationId: ctx.conversationId,
+          events: ctx.events,
+          send: ctx.send,
+          approvalGranted: ctx.approvalGranted,
+          pendingAction: ctx.pendingAction,
+        });
+        emitStepDone(ctx, "paymentsManager", result.ok);
+        return result;
+      },
+    }),
+  };
+}
+
+// ── Searcher tools ─────────────────────────────────────────────────────────
+
+function buildSearcherSystemPrompt(ctx: SharedContext) {
+  return `${SEARCHER_PROMPT}\n\nToday is ${gmt8TodayFromNow(Date.now())} GMT+8.`;
+}
+
+function buildSearcherTools(ctx: SharedContext) {
   return {
     queryNotion: tool({
       description:
-        "Query the live Notion sprint board for Harbor Bean ticket properties and body sections. Use this before sprint status, blockers, readiness, and ticket updates.",
+        "Query the live Notion sprint board for Harbor Bean ticket properties and body sections.",
       inputSchema: z.object({
         project: z.string().default(HARBOR_BEAN_PROJECT),
         ticket: z.string().optional(),
@@ -302,63 +515,255 @@ function buildTools({
         };
       },
     }),
+    querySlack: tool({
+      description:
+        "Read Slack messages. Route: #announcements (events/all-hands), #engineering (tickets/blockers), #vulnerability-monitoring (security), #company-brain-actions (audits).",
+      inputSchema: querySlackInputSchema,
+      execute: async (input) => {
+        const channel = input.channel ?? slackChannelIdForPurpose(input.channelPurpose);
+        return toolRegistry.querySlack.run(
+          { query: channel ? undefined : input.query, channel, limit: input.limit },
+          {},
+        );
+      },
+    }),
+    queryExa: tool({
+      description:
+        "Use Exa for external documentation, blocker validation, CVE details, recent news, or web research.",
+      inputSchema: z.object({
+        query: z.string(),
+        source_preference: z.string().optional(),
+        useCase: z.enum(["verification", "research", "cve", "news"]).optional(),
+      }),
+      execute: async (input) => {
+        const useCase = input.useCase ?? inferExaUseCase(input.query);
+        const runId = `exa-run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+        if (useCase === "research") {
+          const result = ctx.deepSearch
+            ? await queryExaSearch(input.query)
+            : await queryExaSearchFast(input.query);
+          if (result.ok) {
+            const event = {
+              type: "exa_results" as const,
+              results: result.results.map((item) => ({
+                title: item.title,
+                url: item.url,
+                summary: item.summary,
+                publishedDate: item.published_date,
+              })),
+            };
+            ctx.events.push(event);
+            await persistToolCard(ctx.conversationId, "queryExa", "Exa search results", ctx.nextOrderRef, {
+              exaResults: event.results,
+            });
+          }
+          return result;
+        }
+
+        if (useCase === "cve") {
+          const result = ctx.deepSearch
+            ? await queryExaCVE(input.query)
+            : await queryExaCVEFast(input.query);
+          if (result.ok) {
+            const event = { type: "exa_cve" as const, runId, result: result.result };
+            ctx.events.push(event);
+            await persistToolCard(ctx.conversationId, "queryExa", "CVE details", ctx.nextOrderRef, {
+              exaCVE: result.result,
+            });
+          }
+          return result;
+        }
+
+        if (useCase === "news") {
+          const result = ctx.deepSearch
+            ? await queryExaNews(input.query)
+            : await queryExaNewsFast(input.query);
+          if (result.ok) {
+            const event = { type: "exa_news" as const, runId, articles: result.articles };
+            ctx.events.push(event);
+            await persistToolCard(ctx.conversationId, "queryExa", "News results", ctx.nextOrderRef, {
+              exaNews: result.articles,
+            });
+          }
+          return result;
+        }
+
+        const result = await queryHarborBeanExaVerdict(input.query);
+        if (result.ok) {
+          const event = { type: "exa_verdict" as const, runId, verdict: result.verdict };
+          ctx.events.push(event);
+          await persistToolCard(ctx.conversationId, "queryExa", "Exa verdict", ctx.nextOrderRef, {
+            exaVerdict: result.verdict,
+          });
+        }
+        return result;
+      },
+    }),
+    queryRepos: tool({
+      description:
+        "Query CVE monitoring service for registered repos, tracked packages, and alert configuration.",
+      inputSchema: z.object({
+        monitorId: z.string().optional(),
+        limit: z.number().int().min(1).max(50).optional(),
+        offset: z.number().int().min(0).optional(),
+      }),
+      execute: async (input) => {
+        const result = await toolRegistry.queryRepos.run(input, {});
+        if (result.ok && result.data) {
+          const monitors = (result.data as { monitors?: RepoMonitor[] }).monitors ?? [];
+          const event = { type: "repo_monitors" as const, monitors };
+          ctx.events.push(event);
+          await persistToolCard(ctx.conversationId, "queryRepos", "Repo monitors", ctx.nextOrderRef, {
+            repoMonitors: monitors,
+          });
+        }
+        return result;
+      },
+    }),
+    queryGithub: tool({
+      description:
+        "Query GitHub repositories, pull requests, and issues. Use to find stalled PRs, check CI status, or cross-reference PR branches with Notion ticket codes.",
+      inputSchema: z.object({
+        owner: z.string().default("LGTM-superai"),
+        repo: z.string().default("company-brain"),
+        type: z.enum(["repo", "issues", "pulls"]).default("pulls"),
+        state: z.enum(["open", "closed", "all"]).optional(),
+        limit: z.number().int().min(1).max(20).optional(),
+      }),
+      execute: async (input) => {
+        return toolRegistry.queryGithub.run(input, {});
+      },
+    }),
+    queryKnowledgeBase: tool({
+      description:
+        "Query the company knowledge base (S3 + DocumentDB). Three modes: 'search' returns document metadata with download cards — use when user says 'give me the file', 'find the doc', or asks for a list. 'read' retrieves full content — use when user says 'summarize', 'explain', 'what does it say', or asks about content. 'both' (DEFAULT) returns download cards AND fetches content for summarization — use when the user's intent is ambiguous or they just ask a general question about a topic.",
+      inputSchema: z.object({
+        query: z.string().describe("Search query or document topic"),
+        mode: z.enum(["search", "read", "both"]).default("both").describe("'search' = file cards only, 'read' = content only for summarization, 'both' = file cards + content (DEFAULT)"),
+        domain: z.enum(["engineering", "product", "people", "business", "general"]).optional(),
+        tags: z.array(z.string()).optional().describe("Filter by document tags"),
+        documentKey: z.string().optional().describe("Fetch a specific document by key"),
+        username: z.string().optional().describe("Requesting user for access control"),
+      }),
+      execute: async (input) => {
+        if (input.documentKey) {
+          return fetchDocumentContent(input.documentKey, input.username);
+        }
+
+        const s3Result = await searchDocuments({
+          query: input.query,
+          domain: input.domain,
+          tags: input.tags,
+          username: input.username,
+        });
+
+        const hasS3Docs = s3Result.data.documents.length > 0;
+
+        if (input.mode === "read") {
+          if (hasS3Docs) {
+            const topDoc = s3Result.data.documents[0];
+            return fetchDocumentContent(topDoc.key, input.username);
+          }
+          return queryKnowledgeBase(input.query, input.domain, input.username);
+        }
+
+        // For "search" and "both": emit document cards
+        let result;
+        if (hasS3Docs) {
+          result = s3Result;
+        } else {
+          result = queryKnowledgeBase(input.query, input.domain, input.username);
+        }
+
+        const docs = hasS3Docs
+          ? s3Result.data.documents
+          : (result as { results?: unknown[] }).results ?? [];
+
+        if (Array.isArray(docs) && docs.length > 0) {
+          ctx.events.push({ type: "kb_documents", documents: docs as any });
+        }
+
+        if (input.mode === "search") {
+          return result;
+        }
+
+        // mode === "both": also fetch content of the top document for summarization
+        if (hasS3Docs) {
+          const topDoc = s3Result.data.documents[0];
+          const contentResult = await fetchDocumentContent(topDoc.key, input.username);
+          return {
+            ...result,
+            topDocument: contentResult.ok ? contentResult.data : undefined,
+            message: `Found ${docs.length} document(s). Top result content included for summarization.`,
+          };
+        }
+
+        // Fallback: return sample KB content if available
+        const kbResult = queryKnowledgeBase(input.query, input.domain, input.username);
+        const accessible = (kbResult as { results?: Array<{ id: string; title: string; summary: string }> }).results;
+        if (accessible?.length) {
+          return {
+            ...result,
+            topDocument: { title: accessible[0].title, summary: accessible[0].summary },
+            message: `Found ${docs.length} document(s). Summary included.`,
+          };
+        }
+
+        return result;
+      },
+    }),
+  };
+}
+
+// ── Updater tools ──────────────────────────────────────────────────────────
+
+function buildUpdaterSystemPrompt(ctx: SharedContext) {
+  const approvalContext = ctx.pendingAction
+    ? `\n\nPending action: ${JSON.stringify(ctx.pendingAction)}\nApproval granted: ${ctx.approvalGranted ? "yes" : "no"}`
+    : "";
+  return `${UPDATER_PROMPT}\n\nToday is ${gmt8TodayFromNow(Date.now())} GMT+8.${approvalContext}`;
+}
+
+function buildUpdaterTools(ctx: SharedContext) {
+  return {
     updateNotion: tool({
       description:
-        "Update the live Notion sprint board after queryNotion. Can write Latest agent note or update Name, Status, Project, Assignee, Due Date, and Priority. Mutations use approval and current-state guards.",
+        "Update the live Notion sprint board. Can write Latest agent note or update Name, Status, Project, Assignee, Due Date, and Priority.",
       inputSchema: updateNotionInputSchema,
       execute: async (input) => {
         const notionApprovalGranted =
-          approvalGranted &&
-          (pendingAction?.type === "update_ticket_fields" || pendingAction?.type === "move_status");
+          ctx.approvalGranted &&
+          (ctx.pendingAction?.type === "update_ticket_fields" || ctx.pendingAction?.type === "move_status");
 
         if (input.action === "record_latest_agent_note") {
           if (!input.note) {
-            return {
-              ok: false,
-              message: "Tool failed: updateNotion (note is required).",
-            };
+            return { ok: false, message: "Tool failed: updateNotion (note is required)." };
           }
 
-          const result = await updateMcpLatestAgentNote({
-            ticket: input.ticket,
-            note: input.note,
-          });
+          const result = await updateMcpLatestAgentNote({ ticket: input.ticket, note: input.note });
 
           if (result.ok) {
-            await auditExternalMutation(conversationId, {
+            await auditExternalMutation(ctx.conversationId, {
               system: "Notion",
               target: input.ticket,
               action: "Recorded Latest agent note",
             });
-
-            return {
-              ok: true,
-              message: `Done. Recorded agent note on ${input.ticket}.`,
-            };
+            return { ok: true, message: `Done. Recorded agent note on ${input.ticket}.` };
           }
 
-          return {
-            ok: false,
-            message: result.message ?? `Failed to write agent note on ${input.ticket}.`,
-          };
+          return { ok: false, message: result.message ?? `Failed to write agent note on ${input.ticket}.` };
         }
 
-        const request = await buildTicketFieldUpdateRequest(
-          input,
-          pendingAction,
-          notionApprovalGranted,
-        );
+        const request = await buildTicketFieldUpdateRequest(input, ctx.pendingAction, notionApprovalGranted);
 
         if (!request.ok) {
-          return {
-            ok: false,
-            message: request.message,
-          };
+          return { ok: false, message: request.message };
         }
 
         if (!notionApprovalGranted) {
           const action: PendingAction = {
-            actionId: `${conversationId}-pending-${Date.now()}`,
+            actionId: `${ctx.conversationId}-pending-${Date.now()}`,
             type: "update_ticket_fields",
             ticket: request.ticket,
             current: request.current,
@@ -367,7 +772,7 @@ function buildTools({
             createdAt: new Date().toISOString(),
           };
 
-          await setPendingAction(conversationId, action);
+          await setPendingAction(ctx.conversationId, action);
 
           return {
             ok: false,
@@ -384,8 +789,8 @@ function buildTools({
         });
 
         if (result.ok) {
-          await clearPendingAction(conversationId);
-          await auditExternalMutation(conversationId, {
+          await clearPendingAction(ctx.conversationId);
+          await auditExternalMutation(ctx.conversationId, {
             system: "Notion",
             target: request.ticketName,
             action: `Applied sprint-board changes: ${formatChanges(request.current, request.changes)}`,
@@ -403,113 +808,97 @@ function buildTools({
         };
       },
     }),
-    queryExa: tool({
+    createNotionTicket: tool({
       description:
-        "Use Exa for external documentation, blocker validation, CVE details, recent news, or web research. HB-204 blocker validation should use the official Google Maps iframe query.",
+        "Create a new ticket on the Notion sprint board with standard fields and optional body sections.",
       inputSchema: z.object({
-        query: z.string(),
-        source_preference: z.string().optional(),
-        useCase: z.enum(["verification", "research", "cve", "news"]).optional(),
+        name: z.string().describe("Ticket title (include code like HB-XXX)"),
+        project: z.string().default(HARBOR_BEAN_PROJECT),
+        status: z.enum(["Not started", "In progress", "In review", "Done"]).default("Not started"),
+        assignee: z.string().optional().describe("Full name of assignee"),
+        priority: z.enum(["P0", "P1", "P2", "P3"]).default("P1"),
+        dueDate: z.string().optional().describe("ISO date like 2026-06-15"),
+        body: z.array(z.object({
+          title: z.string(),
+          lines: z.array(z.string()),
+        })).optional().describe("Body sections with heading and content lines"),
+        approved: z.boolean().optional(),
+        reason: z.string().optional(),
       }),
       execute: async (input) => {
-        const useCase = input.useCase ?? inferExaUseCase(input.query);
-        const runId = `exa-run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const createApprovalGranted =
+          ctx.approvalGranted && ctx.pendingAction?.type === "create_ticket";
 
-        if (useCase === "research") {
-          const result = deepSearch
-            ? await queryExaSearch(input.query)
-            : await queryExaSearchFast(input.query);
-          if (result.ok) {
-            const event = {
-              type: "exa_results" as const,
-              results: result.results.map((item) => ({
-                title: item.title,
-                url: item.url,
-                summary: item.summary,
-                publishedDate: item.published_date,
-              })),
-            };
-            events.push(event);
-            await persistToolCard(conversationId, "queryExa", "Exa search results", nextOrderRef, {
-              exaResults: event.results,
-            });
-          }
-          return result;
+        if (!createApprovalGranted) {
+          const action: PendingAction = {
+            actionId: `${ctx.conversationId}-pending-${Date.now()}`,
+            type: "create_ticket",
+            ticket: input.name,
+            changes: {
+              name: input.name,
+              status: input.status,
+              project: input.project,
+              assignee: input.assignee,
+              priority: input.priority,
+            },
+            reason: input.reason ?? "Creating a new sprint-board ticket requires approval.",
+            createdAt: new Date().toISOString(),
+          };
+
+          await setPendingAction(ctx.conversationId, action);
+
+          const details = [
+            `Name: ${input.name}`,
+            `Project: ${input.project}`,
+            `Status: ${input.status}`,
+            `Priority: ${input.priority}`,
+            input.assignee ? `Assignee: ${input.assignee}` : null,
+            input.dueDate ? `Due: ${input.dueDate}` : null,
+          ].filter(Boolean).join(", ");
+
+          return {
+            ok: false,
+            requiresApproval: true,
+            message: `Create new ticket? ${details}`,
+            pendingAction: action,
+          };
         }
 
-        if (useCase === "cve") {
-          const result = deepSearch
-            ? await queryExaCVE(input.query)
-            : await queryExaCVEFast(input.query);
-          if (result.ok) {
-            const event = { type: "exa_cve" as const, runId, result: result.result };
-            events.push(event);
-            await persistToolCard(conversationId, "queryExa", "CVE details", nextOrderRef, {
-              exaCVE: result.result,
-            });
-          }
-          return result;
-        }
+        const result = await toolRegistry.createNotionTicket.run(input, {});
 
-        if (useCase === "news") {
-          const result = deepSearch
-            ? await queryExaNews(input.query)
-            : await queryExaNewsFast(input.query);
-          if (result.ok) {
-            const event = { type: "exa_news" as const, runId, articles: result.articles };
-            events.push(event);
-            await persistToolCard(conversationId, "queryExa", "News results", nextOrderRef, {
-              exaNews: result.articles,
-            });
-          }
-          return result;
-        }
-
-        const result = await queryHarborBeanExaVerdict(input.query);
         if (result.ok) {
-          const event = { type: "exa_verdict" as const, runId, verdict: result.verdict };
-          events.push(event);
-          await persistToolCard(conversationId, "queryExa", "Exa verdict", nextOrderRef, {
-            exaVerdict: result.verdict,
+          await clearPendingAction(ctx.conversationId);
+          await auditExternalMutation(ctx.conversationId, {
+            system: "Notion",
+            target: input.name,
+            action: `Created ticket in ${input.project}`,
           });
+
+          return {
+            ok: true,
+            message: `Done. Created ticket "${input.name}" in ${input.project}.`,
+            data: result.data,
+          };
         }
-        return result;
-      },
-    }),
-    querySlack: tool({
-      description:
-        "Read Slack messages using the develop Slack tool. Route announcements/events to #announcements, tickets/blockers to #engineering, security to #vulnerability-monitoring, and audits to #company-brain-actions.",
-      inputSchema: querySlackInputSchema,
-      execute: async (input) => {
-        const channel = input.channel ?? slackChannelIdForPurpose(input.channelPurpose);
-        return toolRegistry.querySlack.run(
-          {
-            query: channel ? undefined : input.query,
-            channel,
-            limit: input.limit,
-          },
-          {},
-        );
+
+        return { ok: false, message: result.summary };
       },
     }),
     updateSlack: tool({
       description:
-        "Stage or send real Slack messages using the develop Slack tool. Non-audit channel posts require approval. Action audits go to #company-brain-actions.",
+        "Post real Slack messages. Non-audit channel posts require approval. Audits go to #company-brain-actions.",
       inputSchema: updateSlackInputSchema,
       execute: async (input) => {
-        const slackApprovalGranted = approvalGranted && pendingAction?.type === "slack_message";
-        const request = buildSlackUpdateRequest(input, pendingAction, slackApprovalGranted);
+        const slackApprovalGranted = ctx.approvalGranted && ctx.pendingAction?.type === "slack_message";
+        const request = buildSlackUpdateRequest(input, ctx.pendingAction, slackApprovalGranted);
 
         if (!request.ok) {
-          return {
-            ok: false,
-            message: request.message,
-          };
+          return { ok: false, message: request.message };
         }
 
         if (shouldAskSlackApproval(request.value, slackApprovalGranted)) {
           const pendingSlackAction: PendingAction = {
-            actionId: `${conversationId}-pending-slack-${Date.now()}`,
+            actionId: `${ctx.conversationId}-pending-slack-${Date.now()}`,
             type: "slack_message",
             channel: request.value.channel,
             channelPurpose: request.value.channelPurpose,
@@ -519,7 +908,7 @@ function buildTools({
             createdAt: new Date().toISOString(),
           };
 
-          await setPendingAction(conversationId, pendingSlackAction);
+          await setPendingAction(ctx.conversationId, pendingSlackAction);
 
           return {
             ok: false,
@@ -531,65 +920,77 @@ function buildTools({
 
         const channel = slackToolChannelForPurpose(request.value.channelPurpose);
         const text = withSlackMentions(request.value.text, request.value.mentionPeople);
-        const result = await toolRegistry.updateSlack.run(
-          {
-            action: "send_message",
-            channel,
-            text,
-          },
-          {},
-        );
+        const result = await toolRegistry.updateSlack.run({ action: "send_message", channel, text }, {});
 
         if (!result.ok) {
           return result;
         }
 
         const sent = result.data as { ok?: boolean; channel?: string; ts?: string } | undefined;
-        await persistSlackAudit(conversationId, text, {
+        await persistSlackAudit(ctx.conversationId, text, {
           channel: sent?.channel ?? channel,
           ts: sent?.ts,
           audit: request.value.channelPurpose === "company-brain-actions",
         });
 
         if (request.value.channelPurpose !== "company-brain-actions") {
-          await auditExternalMutation(conversationId, {
+          await auditExternalMutation(ctx.conversationId, {
             system: "Slack",
             target: `#${request.value.channelPurpose}`,
             action: `Posted message${request.value.mentionPeople?.length ? ` tagging ${request.value.mentionPeople.join(", ")}` : ""}`,
           });
         }
 
-        if (pendingAction?.type === "slack_message") {
-          await clearPendingAction(conversationId);
+        if (ctx.pendingAction?.type === "slack_message") {
+          await clearPendingAction(ctx.conversationId);
         }
 
-        return {
-          ...result,
-          audit: request.value.channelPurpose !== "company-brain-actions",
-        };
+        return { ...result, audit: request.value.channelPurpose !== "company-brain-actions" };
       },
     }),
-    queryRepos: tool({
-      description:
-        "Query the CVE monitoring service for registered repos, tracked packages, and alert configuration.",
+  };
+}
+
+// ── Coder tools ────────────────────────────────────────────────────────────
+
+function buildCoderTools(ctx: SharedContext) {
+  return {
+    queryGithub: tool({
+      description: "Query repositories, open PRs, issues, and code context from GitHub.",
       inputSchema: z.object({
-        monitorId: z.string().optional(),
-        limit: z.number().int().min(1).max(50).optional(),
-        offset: z.number().int().min(0).optional(),
+        owner: z.string().default("LGTM-superai"),
+        repo: z.string().default("company-brain"),
+        type: z.enum(["repo", "issues", "pulls"]).default("pulls"),
+        state: z.enum(["open", "closed", "all"]).optional(),
+        limit: z.number().int().min(1).max(20).optional(),
       }),
       execute: async (input) => {
-        const result = await toolRegistry.queryRepos.run(input, {});
-        if (result.ok && result.data) {
-          const monitors = ((result.data as { monitors?: RepoMonitor[] }).monitors ?? []);
-          const event = { type: "repo_monitors" as const, monitors };
-          events.push(event);
-          await persistToolCard(conversationId, "queryRepos", "Repo monitors", nextOrderRef, {
-            repoMonitors: monitors,
-          });
-        }
-        return result;
+        return toolRegistry.queryGithub.run(input, {});
       },
     }),
+    updateGithub: tool({
+      description:
+        "Create GitHub issues (for CVE alerts, bugs, tasks), comment on PRs, or add labels. Use for CVE remediation tickets.",
+      inputSchema: z.object({
+        action: z.enum(["create_issue", "add_comment", "add_labels"]),
+        owner: z.string().default("LGTM-superai"),
+        repo: z.string().default("company-brain"),
+        title: z.string().optional().describe("Issue title (for create_issue)"),
+        body: z.string().optional().describe("Issue/comment body in markdown"),
+        labels: z.array(z.string()).optional(),
+        issue: z.number().optional().describe("Issue/PR number (for add_comment, add_labels)"),
+      }),
+      execute: async (input) => {
+        return toolRegistry.updateGithub.run(input, {});
+      },
+    }),
+  };
+}
+
+// ── Payments tools ─────────────────────────────────────────────────────────
+
+function buildPaymentsTools(ctx: SharedContext) {
+  return {
     makePayment: tool({
       description:
         "Allocate project budget via Stripe virtual card, or distribute a total budget across projects.",
@@ -611,15 +1012,15 @@ function buildTools({
             allocation?: BudgetAllocationEvent;
           };
           const allocations = data.allocations ?? (data.allocation ? [data.allocation] : []);
-          const totalCents = allocations.reduce((sum, allocation) => sum + allocation.amountCents, 0);
+          const totalCents = allocations.reduce((sum, a) => sum + a.amountCents, 0);
           const event = { type: "budget_allocated" as const, allocations, totalCents };
-          events.push(event);
-          await persistToolCard(conversationId, "makePayment", "Budget allocated", nextOrderRef, {
+          ctx.events.push(event);
+          await persistToolCard(ctx.conversationId, "makePayment", "Budget allocated", ctx.nextOrderRef, {
             budgetAllocations: allocations,
           });
-          await auditExternalMutation(conversationId, {
+          await auditExternalMutation(ctx.conversationId, {
             system: "Stripe",
-            target: allocations.map((allocation) => allocation.projectId).join(", "),
+            target: allocations.map((a) => a.projectId).join(", "),
             action: `Allocated $${(totalCents / 100).toFixed(2)}`,
           });
         }
@@ -628,7 +1029,7 @@ function buildTools({
     }),
     buySomething: tool({
       description:
-        "Order food for a team. Reads team dietary profiles, searches Exa for restaurant matches, and can charge through Stripe when confirmed.",
+        "Order food for a team. Reads team dietary profiles, searches Exa for restaurant matches, and charges through Stripe when confirmed.",
       inputSchema: z.object({
         teamName: z.string(),
         budgetPerHeadCents: z.number().int().positive().optional(),
@@ -658,8 +1059,8 @@ function buildTools({
             payment: data.payment,
           };
           const event = { type: "food_order" as const, order };
-          events.push(event);
-          await persistToolCard(conversationId, "buySomething", "Food order", nextOrderRef, {
+          ctx.events.push(event);
+          await persistToolCard(ctx.conversationId, "buySomething", "Food order", ctx.nextOrderRef, {
             foodOrder: order,
           });
         }
@@ -668,6 +1069,8 @@ function buildTools({
     }),
   };
 }
+
+// ── Persistence helpers ────────────────────────────────────────────────────
 
 async function persistToolCard(
   conversationId: string,
@@ -698,19 +1101,11 @@ async function auditExternalMutation(
 
   try {
     const result = await toolRegistry.updateSlack.run(
-      {
-        action: "send_message",
-        channel: "actions",
-        text,
-      },
+      { action: "send_message", channel: "actions", text },
       {},
     );
 
-    await persistSlackAudit(conversationId, text, {
-      ...input,
-      result,
-    });
-
+    await persistSlackAudit(conversationId, text, { ...input, result });
     return result;
   } catch (error) {
     await persistSlackAudit(conversationId, text, {
@@ -725,6 +1120,8 @@ async function auditExternalMutation(
     };
   }
 }
+
+// ── Slack helpers ──────────────────────────────────────────────────────────
 
 function buildSlackUpdateRequest(
   input: UpdateSlackToolInput,
@@ -771,11 +1168,9 @@ function auditTextFromSlackInput(input: UpdateSlackToolInput) {
   if (input.system && input.target && input.action) {
     return `${input.system}: ${input.action} on ${input.target}`;
   }
-
   if (input.action && input.target) {
     return `${input.action} on ${input.target}`;
   }
-
   return "";
 }
 
@@ -785,9 +1180,7 @@ function defaultSlackPurposeFromInput(input: UpdateSlackToolInput): SlackChannel
 }
 
 function shouldAskSlackApproval(
-  input: {
-    channelPurpose?: SlackChannelPurpose;
-  },
+  input: { channelPurpose?: SlackChannelPurpose },
   approved: boolean,
 ) {
   if (approved) return false;
@@ -899,112 +1292,7 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function forcedToolChoiceForLatestMessage(
-  message: string,
-  pendingAction: PendingAction | null,
-  approvalGranted: boolean,
-) {
-  if (
-    approvalGranted &&
-    (pendingAction?.type === "update_ticket_fields" || pendingAction?.type === "move_status")
-  ) {
-    return { type: "tool" as const, toolName: "updateNotion" as const };
-  }
-
-  if (pendingAction?.type === "slack_message" && approvalGranted) {
-    return { type: "tool" as const, toolName: "updateSlack" as const };
-  }
-
-  if (isSlackWriteIntent(message)) {
-    return { type: "tool" as const, toolName: "updateSlack" as const };
-  }
-
-  return undefined;
-}
-
-function isSlackWriteIntent(message: string) {
-  const normalized = message.toLowerCase();
-
-  if (!/\b(slack|nudge|notify|ping|tag|send|post|message|announce|announcement)\b/.test(normalized)) {
-    return false;
-  }
-
-  const readOnly =
-    /\b(read|query|search|summarize|summarise|what|who|when|where|history|logs?)\b/.test(normalized) &&
-    !/\b(send|post|nudge|notify|ping|tag|announce)\b/.test(normalized);
-
-  return !readOnly;
-}
-
-function isSlackSendConfirmation(message: string) {
-  return /\b(send it|post it|send this|post this|ok send|okay send|go ahead|yes|yep|yeah|confirm|confirmed|do it)\b/i.test(
-    message,
-  );
-}
-
-async function recoverPendingSlackActionFromDraft(conversationId: string) {
-  const recentAssistantMessages = await MessageModel.find({
-    conversationId,
-    role: "assistant",
-  })
-    .sort({ order: -1 })
-    .limit(8)
-    .lean();
-
-  for (const message of recentAssistantMessages) {
-    const draft = parseSlackDraftFromAssistantText(message.content);
-
-    if (draft) {
-      return {
-        actionId: `${conversationId}-recovered-slack-${Date.now()}`,
-        type: "slack_message" as const,
-        channelPurpose: draft.channelPurpose,
-        text: draft.text,
-        mentionPeople: draft.mentionPeople,
-        reason: "Recovered from the last assistant Slack draft after the user approved sending.",
-        createdAt: new Date().toISOString(),
-      };
-    }
-  }
-
-  return null;
-}
-
-function parseSlackDraftFromAssistantText(content: string) {
-  const channelMatch =
-    content.match(/\*\*Channel:\*\*\s*#?([a-z0-9_-]+)/i) ??
-    content.match(/\bChannel:\s*#?([a-z0-9_-]+)/i);
-  const messageMatch =
-    content.match(/\*\*Message:\*\*\s*(?:>\s*)?([\s\S]+)/i) ??
-    content.match(/\bMessage:\s*(?:>\s*)?([\s\S]+)/i);
-
-  if (!channelMatch || !messageMatch) return null;
-
-  const channelPurpose = normalizeSlackPurpose(channelMatch[1]) ?? "engineering";
-  const text = cleanupRecoveredSlackDraft(messageMatch[1]);
-
-  if (text.length < 8) return null;
-
-  return {
-    channelPurpose,
-    text,
-    mentionPeople: extractMentionPeopleFromText(text),
-  };
-}
-
-function cleanupRecoveredSlackDraft(text: string) {
-  return text
-    .split(/\n?\s*---/)[0]
-    .replace(/\n?\s*Reply\s+\*\*?yes[\s\S]*$/i, "")
-    .replace(/\n?\s*Do you want me to post[\s\S]*$/i, "")
-    .replace(/^>\s*/, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function extractMentionPeopleFromText(text: string) {
-  return users.filter((user) => new RegExp(`\\b${escapeRegExp(user.name.split(" ")[0])}\\b`, "i").test(text)).map((user) => user.name);
-}
+// ── Notion helpers ─────────────────────────────────────────────────────────
 
 async function buildTicketFieldUpdateRequest(
   input: UpdateNotionInput,
@@ -1046,10 +1334,7 @@ async function buildTicketFieldUpdateRequest(
     };
   }
 
-  const result = await queryMcpNotionTickets({
-    ticket: input.ticket,
-    includeBody: false,
-  });
+  const result = await queryMcpNotionTickets({ ticket: input.ticket, includeBody: false });
 
   if (result.tickets.length !== 1) {
     return {
@@ -1159,6 +1444,8 @@ function formatValue(value: unknown) {
   return value === null || value === "" || value === undefined ? "empty" : String(value);
 }
 
+// ── Message / routing helpers ──────────────────────────────────────────────
+
 async function buildModelMessages(conversationId: string): Promise<ModelMessage[]> {
   const persistedMessages = await MessageModel.find({
     conversationId,
@@ -1174,6 +1461,97 @@ async function buildModelMessages(conversationId: string): Promise<ModelMessage[
   }));
 }
 
+function forcedToolChoiceForLatestMessage(
+  message: string,
+  pendingAction: PendingAction | null,
+  approvalGranted: boolean,
+) {
+  if (!approvalGranted || !pendingAction) return undefined;
+
+  if (
+    pendingAction.type === "update_ticket_fields" ||
+    pendingAction.type === "move_status" ||
+    pendingAction.type === "slack_message" ||
+    pendingAction.type === "create_ticket"
+  ) {
+    return { type: "tool" as const, toolName: "delegateToUpdater" as const };
+  }
+
+  return undefined;
+}
+
+function isSlackSendConfirmation(message: string) {
+  return /\b(send it|post it|send this|post this|ok send|okay send|go ahead|yes|yep|yeah|confirm|confirmed|do it)\b/i.test(
+    message,
+  );
+}
+
+async function recoverPendingSlackActionFromDraft(conversationId: string) {
+  const recentAssistantMessages = await MessageModel.find({
+    conversationId,
+    role: "assistant",
+  })
+    .sort({ order: -1 })
+    .limit(8)
+    .lean();
+
+  for (const message of recentAssistantMessages) {
+    const draft = parseSlackDraftFromAssistantText(message.content);
+
+    if (draft) {
+      return {
+        actionId: `${conversationId}-recovered-slack-${Date.now()}`,
+        type: "slack_message" as const,
+        channelPurpose: draft.channelPurpose,
+        text: draft.text,
+        mentionPeople: draft.mentionPeople,
+        reason: "Recovered from the last assistant Slack draft after the user approved sending.",
+        createdAt: new Date().toISOString(),
+      };
+    }
+  }
+
+  return null;
+}
+
+function parseSlackDraftFromAssistantText(content: string) {
+  const channelMatch =
+    content.match(/\*\*Channel:\*\*\s*#?([a-z0-9_-]+)/i) ??
+    content.match(/\bChannel:\s*#?([a-z0-9_-]+)/i);
+  const messageMatch =
+    content.match(/\*\*Message:\*\*\s*(?:>\s*)?([\s\S]+)/i) ??
+    content.match(/\bMessage:\s*(?:>\s*)?([\s\S]+)/i);
+
+  if (!channelMatch || !messageMatch) return null;
+
+  const channelPurpose = normalizeSlackPurpose(channelMatch[1]) ?? "engineering";
+  const text = cleanupRecoveredSlackDraft(messageMatch[1]);
+
+  if (text.length < 8) return null;
+
+  return {
+    channelPurpose,
+    text,
+    mentionPeople: extractMentionPeopleFromText(text),
+  };
+}
+
+function cleanupRecoveredSlackDraft(text: string) {
+  return text
+    .split(/\n?\s*---/)[0]
+    .replace(/\n?\s*Reply\s+\*\*?yes[\s\S]*$/i, "")
+    .replace(/\n?\s*Do you want me to post[\s\S]*$/i, "")
+    .replace(/^>\s*/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractMentionPeopleFromText(text: string) {
+  return users
+    .filter((user) => new RegExp(`\\b${escapeRegExp(user.name.split(" ")[0])}\\b`, "i").test(text))
+    .map((user) => user.name);
+}
+
 function inferExaUseCase(query: string): "verification" | "research" | "cve" | "news" {
   if (/cve|vulnerability|security|exploit|advisory/i.test(query)) return "cve";
   if (/news|recent|article|market|competitor|industry/i.test(query)) return "news";
@@ -1181,106 +1559,34 @@ function inferExaUseCase(query: string): "verification" | "research" | "cve" | "
   return "research";
 }
 
-function systemPrompt({
+// ── Router system prompt ───────────────────────────────────────────────────
+
+function routerSystemPrompt({
   pendingAction,
   approvalGranted,
 }: {
   pendingAction: PendingAction | null;
   approvalGranted: boolean;
 }) {
-  return `
-You are LGTM Company Brain for the Harbor Bean Cafe landing-page sprint board.
-Today is ${gmt8TodayFromNow(Date.now())} in GMT+8, computed from Date.now().
+  return `${ROUTER_PROMPT}
 
-Use a Scout-style router surface:
-- queryNotion reads live Notion sprint-board properties and body sections.
-- querySlack reads recent Slack messages through the Slack tool from origin develop.
-- queryExa validates technical blockers and retrieves live web context.
-- updateNotion writes controlled Notion sprint-board updates.
-- updateSlack posts real Slack messages and #company-brain-actions audit notifications.
-- queryRepos, makePayment, and buySomething are available for develop's repo/payment/food demos.
+Today is ${gmt8TodayFromNow(Date.now())} GMT+8.
 
-Rules:
-- Source of truth for tickets is live Notion, not Mongo.
-- Always queryNotion before sprint-board answers, blocker checks, readiness summaries, status moves, assignee changes, due-date changes, priority changes, project changes, title changes, and note writes.
-- Always queryNotion before updateNotion for any Notion mutation.
-- Use querySlack when the user asks about recent communication, announcements, informal status, blocker chatter, vulnerability reports, or previous Company Brain actions.
-- Route querySlack by default:
-  - #announcements for announcements, events, all-hands, company direction, and broad updates.
-  - #engineering for tickets, engineering issues, blockers, launch status, PRs, bugs, and implementation chatter.
-  - #vulnerability-monitoring for vulnerability reports, security incidents, CVEs, patches, and security fixes.
-  - #company-brain-actions for prior actions taken by Company Brain.
-- When a question mixes sprint-board state and recent team chatter, call queryNotion first, then querySlack on the routed channel.
-- For ticket-related Slack writes, use #engineering and tag the relevant assignee/person when known.
-- For broad announcements, use #announcements and avoid mass mentions unless the user explicitly asks.
-- For vulnerability updates, use #vulnerability-monitoring.
-- For action audits, use #company-brain-actions.
-- If the user asks to send/update Slack but no tag is specified and a person is relevant, ask whether to tag anyone before posting. Do not guess broad tags.
-- Non-audit Slack posts require approval. Call updateSlack once to stage the message and ask for approval; after the user confirms, call updateSlack again with approved true.
-- Do not stage Slack messages only in plain assistant text. Any Slack draft that might later be sent must be staged by calling updateSlack, even if the user only asks to "show the updated message".
-- If the user asks to revise a staged Slack message, call updateSlack again with the revised text and mentionPeople so the pending action is updated.
-- If Pending action is type "slack_message" and Approval in latest user message is yes, your next action must be updateSlack with approved true.
-- Never say a Slack message was sent, posted, nudged, notified, or tagged unless updateSlack was called in the current turn and returned ok true.
-- For project-level Harbor Bean questions, query all tickets with bodies.
-- Treat overdue as a potential blocker when Due Date is before today in GMT+8.
-- HB-101 is a client-input blocker if overdue and still missing the reservation URL.
-- HB-204 technical blocker validation must call queryExa with this exact compact query unless the user gives a better one: "official docs responsive iframe aspect-ratio Google Maps embed mobile overflow".
-- After queryExa validates HB-204, classify the blocker using blocker_validity/verdict:
-  - valid_blocker means work is blocked by missing external input.
-  - fixable_implementation_issue means docs show a clear implementation path and the ticket is not truly externally blocked.
-  - partially_valid means implementation is probably possible but still needs team verification.
-  - unknown means no evidence-backed decision.
-- queryExa answers only by default. Do not call updateNotion or updateSlack for Exa evidence unless the user explicitly chooses that follow-up.
-- If queryExa returns ok false, say Exa validation failed and do not present the result as Exa-backed.
-- After a successful queryExa blocker validation, end the answer with this exact follow-up question: "Do you want me to append this finding to the Notion ticket, or send a Slack nudge/message?"
-- If the user asks to append/write/save/record the Exa finding to Notion, call updateNotion with action "record_latest_agent_note" and include verdict, evidence URL, and recommended next step in the note.
-- If the user asks to tell Slack/send a nudge/message, call updateSlack with a concise message that includes the ticket, verdict, evidence URL, and next step.
-- updateNotion can update these sprint-board fields: Name, Status, Project, Assignee, Due Date, and Priority. It can also write Latest agent note in the ticket body.
-- Use updateNotion action "update_ticket_fields" for board-property changes. Put requested field changes in changes: { name, status, project, assignee, dueDate, priority }.
-- For reassignments, use changes.assignee. Known teammate names: Carlos Vincent Frasenda, Edrick Kesuma, Darren Prasetya, Lakshya Agarwal.
-- Do not reject reassignment, due-date, title, project, priority, or status changes as unsupported when they target the sprint board.
-- All sprint-board field changes require second-turn approval. On the first request, call updateNotion with update_ticket_fields so it stores pending approval and returns the approval prompt, then ask the user to confirm.
-- If the user approves a pending Notion action, call updateNotion with approved true. The server handles the #company-brain-actions audit.
-- If a tool returns ok false, explain the graceful failure. Never invent successful writes.
-- Final answers should be concise: state the result, evidence, and next step.
-
-Pending action:
-${pendingAction ? JSON.stringify(pendingAction) : "none"}
-Approval in latest user message: ${approvalGranted ? "yes" : "no"}
-`.trim();
+${pendingAction ? `Pending action awaiting approval:\n${JSON.stringify(pendingAction)}\nUser approval: ${approvalGranted ? "yes — delegate to Updater immediately" : "no"}` : "No pending actions."}`;
 }
+
+// ── Error / summary helpers ────────────────────────────────────────────────
 
 function friendlyError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-
-  if (/AI_MODEL/.test(message)) {
-    return "AI_MODEL is not set, so Company Brain could not start the agent run.";
+  if (error instanceof Error) {
+    if (error.message.includes("rate limit")) return "Rate limited. Please try again in a moment.";
+    if (error.message.includes("timeout")) return "Request timed out. Please try again.";
+    return `Something went wrong: ${error.message}`;
   }
-
-  if (/NOTION_TOKEN/.test(message)) {
-    return "Tool failed: queryNotion (NOTION_TOKEN is not set).";
-  }
-
-  if (/NOTION_MCP_AUTH_TOKEN/.test(message)) {
-    return "Tool failed: queryNotion (NOTION_MCP_AUTH_TOKEN is not set).";
-  }
-
-  if (/fetch failed|ECONNREFUSED|MCP|Notion MCP/i.test(message)) {
-    return "Tool failed: queryNotion (Notion MCP server is unavailable. Run `bun run notion:mcp` and try again).";
-  }
-
-  if (/EXA_API_KEY/.test(message)) {
-    return "Tool failed: queryExa (EXA_API_KEY is not set).";
-  }
-
-  if (/SLACK_BOT_TOKEN/.test(message)) {
-    return "Tool failed: updateSlack (SLACK_BOT_TOKEN is not set).";
-  }
-
-  return "Company Brain could not complete this run. Check provider credentials and try again.";
+  return "An unexpected error occurred.";
 }
 
-function summaryFromAnswer(userMessage: string, answer: string) {
-  const trimmedAnswer = answer.replace(/\s+/g, " ").trim();
-  return `${titleFromMessage(userMessage)} -> ${trimmedAnswer.slice(0, 120)}`;
+function summaryFromAnswer(question: string, answer: string) {
+  const short = answer.length > 120 ? answer.slice(0, 120) + "..." : answer;
+  return short;
 }
