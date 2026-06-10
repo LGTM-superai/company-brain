@@ -1,5 +1,5 @@
 import { NextResponse, after } from "next/server";
-import type { AgentEvent, ExaUseCase, ToolName, RepoMonitor } from "@company-brain/shared";
+import type { AgentEvent, ExaUseCase, ToolName, RepoMonitor, BudgetAllocationEvent, FoodOrderEvent } from "@company-brain/shared";
 import { connectMongo } from "../../../lib/mongodb";
 import { ConversationModel, MessageModel, ExaRunModel } from "../../../lib/models";
 import { routeMessage } from "../../../lib/router";
@@ -81,6 +81,9 @@ export async function POST(request: Request) {
 
   let slackSendResult: { ok?: boolean; channel?: string } | null = null;
 
+  let paymentResult: { type: "budget_allocated"; allocations: BudgetAllocationEvent[]; totalCents: number } | null = null;
+  let foodResult: FoodOrderEvent | null = null;
+
   for (const tool of routed.tools) {
     if (tool === "queryRepos") {
       events.push({ type: "tool_call", tool: "queryRepos" });
@@ -106,6 +109,47 @@ export async function POST(request: Request) {
         });
       } catch {
         slackSendResult = { ok: false };
+      }
+    } else if (tool === "makePayment") {
+      events.push({ type: "tool_call", tool: "makePayment" });
+      try {
+        const paymentInput = parseBudgetIntent(rawMessage);
+        const result = await toolRegistry.makePayment.run(paymentInput, {});
+        if (result.ok && result.data) {
+          const data = result.data as { action: string; allocations?: BudgetAllocationEvent[]; allocation?: BudgetAllocationEvent };
+          const allocations = data.allocations ?? (data.allocation ? [data.allocation] : []);
+          const totalCents = allocations.reduce((sum, a) => sum + a.amountCents, 0);
+          paymentResult = { type: "budget_allocated", allocations, totalCents };
+          events.push(paymentResult);
+        }
+      } catch {
+        // payment tool failed
+      }
+    } else if (tool === "buySomething") {
+      events.push({ type: "tool_call", tool: "buySomething" });
+      try {
+        const foodInput = parseFoodIntent(rawMessage);
+        const result = await toolRegistry.buySomething.run(foodInput, {});
+        if (result.ok && result.data) {
+          const data = result.data as {
+            team: { teamName: string; headcount: number; combinedDietary: string[]; combinedAllergens: string[] };
+            recommendations: { restaurantName: string; url: string; reason: string; estimatedCostPerHead: string }[];
+            budgetPerHeadCents: number;
+            payment?: { totalCents: number; paymentIntentId: string; status: string };
+          };
+          foodResult = {
+            teamName: data.team.teamName,
+            headcount: data.team.headcount,
+            dietary: data.team.combinedDietary,
+            allergens: data.team.combinedAllergens,
+            recommendations: data.recommendations,
+            budgetPerHeadCents: data.budgetPerHeadCents,
+            payment: data.payment,
+          };
+          events.push({ type: "food_order", order: foodResult });
+        }
+      } catch {
+        // food order tool failed
       }
     } else {
       events.push({ type: "tool_call", tool: tool as ToolName });
@@ -137,17 +181,21 @@ export async function POST(request: Request) {
   const hasUpdate = routed.tools.some((t) => t.startsWith("update"));
   events.push({
     type: "assistant_message",
-    content: exaUseCase
-      ? "Searching the web for live results — I'll update this thread when they arrive."
-      : slackSendResult?.ok
-        ? `Message sent to #${slackSendResult.channel}.`
-        : slackSendResult && !slackSendResult.ok
-          ? "Failed to send Slack message — check bot token and channel permissions."
-          : hasUpdate
-            ? "I found the matching source context, prepared the update, and logged the action."
-            : routed.tools.includes("queryRepos")
-              ? "I queried the CVE monitoring service and returned the current repo registrations."
-              : "I checked the relevant company context and returned the most relevant current answer with source-aware routing.",
+    content: foodResult
+      ? `Found ${foodResult.recommendations.length} restaurant options for the ${foodResult.teamName} team (${foodResult.headcount} people). Dietary needs and allergens have been factored in.${foodResult.payment ? ` Payment of $${(foodResult.payment.totalCents / 100).toFixed(2)} processed.` : ""}`
+      : paymentResult
+        ? `Budget allocated: $${(paymentResult.totalCents / 100).toFixed(2)} distributed across ${paymentResult.allocations.length} project(s) via Stripe virtual cards.`
+        : exaUseCase
+          ? "Searching the web for live results — I'll update this thread when they arrive."
+          : slackSendResult?.ok
+            ? `Message sent to #${slackSendResult.channel}.`
+            : slackSendResult && !slackSendResult.ok
+              ? "Failed to send Slack message — check bot token and channel permissions."
+              : hasUpdate
+                ? "I found the matching source context, prepared the update, and logged the action."
+                : routed.tools.includes("queryRepos")
+                  ? "I queried the CVE monitoring service and returned the current repo registrations."
+                  : "I checked the relevant company context and returned the most relevant current answer with source-aware routing.",
   });
 
   events.push({ type: "done" });
@@ -292,6 +340,34 @@ async function persistAgentEvents(
       ];
     }
 
+    if (event.type === "budget_allocated") {
+      return [
+        {
+          messageId: `${conversationId}-budget-${timestamp}-${index}`,
+          conversationId,
+          role: "tool",
+          content: "Budget allocated",
+          toolName: "makePayment",
+          budgetAllocations: event.allocations,
+          order: order++,
+        },
+      ];
+    }
+
+    if (event.type === "food_order") {
+      return [
+        {
+          messageId: `${conversationId}-food-${timestamp}-${index}`,
+          conversationId,
+          role: "tool",
+          content: "Food order",
+          toolName: "buySomething",
+          foodOrder: event.order,
+          order: order++,
+        },
+      ];
+    }
+
     if (event.type === "assistant_message") {
       return [
         {
@@ -331,4 +407,48 @@ function summarizeRequest(message: string, didUpdate: boolean, usedExa: boolean)
   }
 
   return `Answered from routed company context: ${titleFromMessage(message)}`;
+}
+
+function parseBudgetIntent(message: string): Record<string, unknown> {
+  const lower = message.toLowerCase();
+
+  const amountMatch = message.match(/\$?([\d,]+(?:\.\d{2})?)/);
+  const amount = amountMatch ? Math.round(parseFloat(amountMatch[1].replace(/,/g, "")) * 100) : 100_00;
+
+  const projectMatches = lower.match(/(?:for|to)\s+(?:the\s+)?([a-z\s]+?)(?:\s+(?:project|team|and|,|\.|$))/g);
+  const projects: { name: string; percentage: number }[] = [];
+
+  if (projectMatches && projectMatches.length > 1) {
+    const names = projectMatches.map((m) =>
+      m.replace(/^(?:for|to)\s+(?:the\s+)?/, "").replace(/\s+(?:project|team|and|,|\.)$/, "").trim()
+    ).filter(Boolean);
+
+    const pctEach = Math.floor(100 / names.length);
+    for (const name of names) {
+      projects.push({ name, percentage: pctEach });
+    }
+
+    return { action: "distributeBudget", amountCents: amount, projects };
+  }
+
+  const projectName = projectMatches?.[0]
+    ?.replace(/^(?:for|to)\s+(?:the\s+)?/, "")
+    .replace(/\s+(?:project|team|and|,|\.)$/, "")
+    .trim() || "general";
+
+  return { action: "setBudget", projectName, amountCents: amount };
+}
+
+function parseFoodIntent(message: string): Record<string, unknown> {
+  const lower = message.toLowerCase();
+
+  const teamMatch = lower.match(/(?:for|the)\s+(tech|product|design|engineering)\s*(?:team)?/);
+  const teamName = teamMatch?.[1] === "engineering" ? "tech" : (teamMatch?.[1] ?? "tech");
+
+  const budgetMatch = message.match(/\$(\d+)/);
+  const budgetPerHeadCents = budgetMatch ? Math.round(parseFloat(budgetMatch[1]) * 100) : 1500;
+
+  const confirm = /confirm|go ahead|place.*order|charge/i.test(lower);
+
+  return { teamName, budgetPerHeadCents, confirm };
 }

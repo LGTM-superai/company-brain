@@ -54,6 +54,19 @@ export function CommandCenter({
     []
   );
 
+  const handleDeleteConversation = useCallback(async (conversationId: string) => {
+    try {
+      await fetch(`/api/conversations/${conversationId}`, { method: "DELETE" });
+      setConversations((prev) => prev.filter((c) => c.conversationId !== conversationId));
+      if (activeConversationId === conversationId) {
+        setActiveConversationId(null);
+        setMessages([]);
+      }
+    } catch {
+      // delete failed silently
+    }
+  }, [activeConversationId]);
+
   return (
     <AppShell
       activePath="/"
@@ -65,6 +78,7 @@ export function CommandCenter({
       activeConversationId={activeConversationId}
       onSelectConversation={handleSelectConversation}
       onNewChat={handleNewChat}
+      onDeleteConversation={handleDeleteConversation}
     >
       {error ? (
         <div className="m-4 border border-error/30 rounded-lg bg-error/5 p-3 text-error text-sm">

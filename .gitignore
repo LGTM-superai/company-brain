@@ -26,4 +26,4 @@ apps/web/tsconfig.tsbuildinfo
 .env.local
 
 # claude
-.claude
+.claude.mcp.json

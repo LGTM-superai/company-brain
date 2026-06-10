@@ -17,8 +17,8 @@ const AVAILABLE_TOOLS = [
   { name: "updateNotion", description: "Create or update Notion pages/databases" },
   { name: "updateSlack", description: "Send Slack messages or notifications" },
   { name: "updateGithub", description: "Create PRs, issues, or push code changes" },
-  { name: "makePayment", description: "Process a payment transaction" },
-  { name: "buySomething", description: "Purchase items or services" },
+  { name: "makePayment", description: "Set or distribute budget to projects via Stripe virtual cards" },
+  { name: "buySomething", description: "Order food, plan a team lunch or dinner — reads dietary profiles, searches restaurants via Exa, charges via Stripe. Use for any food/meal/dinner/lunch/catering request." },
 ] as const;
 
 const SYSTEM_PROMPT = `You are a tool router for an AI assistant called "Company Brain". Given the user's message and conversation history, decide which tools should be called to fulfill the request.
@@ -31,7 +31,8 @@ Rules:
 - Only include "update" tools if the user explicitly asks to send, post, move, assign, create, or change something.
 - Only include queryExa if the user asks about public/external information, fact-checking, vulnerabilities, or news.
 - Only include queryRepos if the user asks about dependency monitoring, CVEs in their repos, or package vulnerabilities.
-- Only include payment tools if the user explicitly mentions paying, buying, or purchasing.
+- Include makePayment if the user mentions budget, allocate, distribute funds, or set spending limits for projects.
+- Include buySomething if the user mentions ordering food, team lunch, team dinner, planning a meal, catering, dinner, lunch, or any food-related request.
 - Return 1-4 tools max. Fewer is better.
 
 Respond with ONLY valid JSON in this format:
@@ -102,6 +103,12 @@ function fallbackRoute(message: string): RoutedTools {
   if (/verify|fact.?check|cve|vulnerability|news|docs|tutorial/i.test(lower)) tools.push("queryExa");
   if (/move|update|send|assign|change|post/i.test(lower)) {
     tools.push("updateNotion", "updateSlack");
+  }
+  if (/budget|allocat|distribute.*fund|spending.*limit/i.test(lower)) {
+    tools.push("makePayment");
+  }
+  if (/order.*food|team.*lunch|team.*dinner|cater|meal|dinner|lunch.*for|food.*for/i.test(lower)) {
+    tools.push("buySomething");
   }
 
   return { tools, reasoning: "Fallback regex routing (Bedrock unavailable)" };

@@ -9,6 +9,7 @@
   "dependencies": {
     "@company-brain/shared": "workspace:*",
     "@slack/web-api": "^7.0.0",
-    "exa-js": "^2.13.0"
+    "exa-js": "^2.13.0",
+    "stripe": "^17.0.0"
   }
 }

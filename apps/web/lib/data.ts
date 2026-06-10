@@ -14,6 +14,35 @@ export type DashboardConversation = {
   updatedLabel: string;
 };
 
+export type BudgetAllocation = {
+  projectId: string;
+  amountCents: number;
+  currency: string;
+  cardId: string;
+  status: "active" | "created";
+};
+
+export type FoodRecommendation = {
+  restaurantName: string;
+  url: string;
+  reason: string;
+  estimatedCostPerHead: string;
+};
+
+export type FoodOrder = {
+  teamName: string;
+  headcount: number;
+  dietary: string[];
+  allergens: string[];
+  recommendations: FoodRecommendation[];
+  budgetPerHeadCents: number;
+  payment?: {
+    totalCents: number;
+    paymentIntentId: string;
+    status: string;
+  };
+};
+
 export type DashboardMessage = {
   messageId: string;
   role: "user" | "assistant" | "tool";
@@ -58,6 +87,8 @@ export type DashboardMessage = {
     published_date: string;
     summary: string;
   }>;
+  budgetAllocations?: BudgetAllocation[];
+  foodOrder?: FoodOrder;
 };
 
 export type DashboardAgent = {
@@ -150,6 +181,8 @@ export async function getDashboardData(): Promise<DashboardData> {
         exaVerdict: message.exaVerdict,
         exaCVE: message.exaCVE,
         exaNews: message.exaNews,
+        budgetAllocations: message.budgetAllocations,
+        foodOrder: message.foodOrder,
       }))),
       agents: agents.map((agent) => ({
         agentId: agent.agentId,

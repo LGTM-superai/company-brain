@@ -13,7 +13,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   Send, Mic, Bot, Wrench, Sparkles, ExternalLink, Shield,
   Package, Pause, AlertTriangle, Search, CheckCircle, XCircle,
-  Newspaper, Bug,
+  Newspaper, Bug, CreditCard, UtensilsCrossed, Users, DollarSign,
+  Leaf, ShieldAlert,
 } from "lucide-react";
 
 type ChatItem =
@@ -28,6 +29,8 @@ type ChatItem =
       exaVerdict?: DashboardMessage["exaVerdict"];
       exaCVE?: DashboardMessage["exaCVE"];
       exaNews?: DashboardMessage["exaNews"];
+      budgetAllocations?: DashboardMessage["budgetAllocations"];
+      foodOrder?: DashboardMessage["foodOrder"];
       _pending?: boolean;
       _runId?: string;
       _useCase?: ExaUseCase;
@@ -201,6 +204,28 @@ export function ChatInterface({
             content: "Repo monitors",
             toolName: "queryRepos",
             repoMonitors: agentEvent.monitors,
+          });
+          return;
+        }
+
+        if (agentEvent.type === "budget_allocated") {
+          eventMessages.push({
+            messageId: `budget-${Date.now()}-${index}`,
+            role: "tool",
+            content: "Budget allocated",
+            toolName: "makePayment",
+            budgetAllocations: agentEvent.allocations,
+          });
+          return;
+        }
+
+        if (agentEvent.type === "food_order") {
+          eventMessages.push({
+            messageId: `food-${Date.now()}-${index}`,
+            role: "tool",
+            content: "Food order",
+            toolName: "buySomething",
+            foodOrder: agentEvent.order,
           });
           return;
         }
@@ -441,6 +466,137 @@ function ExaNewsCards({ articles }: { articles: NonNullable<DashboardMessage["ex
   );
 }
 
+function BudgetAllocationsCard({ allocations }: { allocations: NonNullable<DashboardMessage["budgetAllocations"]> }) {
+  const total = allocations.reduce((sum, a) => sum + a.amountCents, 0);
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 mb-1">
+        <CreditCard className="h-3.5 w-3.5 text-primary" />
+        <span className="text-xs font-medium text-foreground">
+          Budget Allocation ({allocations.length} project{allocations.length > 1 ? "s" : ""})
+        </span>
+        <Badge className="text-[10px] h-5 bg-green-500/10 text-green-600 ml-auto">
+          ${(total / 100).toFixed(2)} total
+        </Badge>
+      </div>
+      {allocations.map((allocation) => (
+        <Card key={allocation.cardId} className="bg-card border-border">
+          <CardContent className="p-3 space-y-1.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <DollarSign className="h-3.5 w-3.5 text-green-500" />
+                <strong className="text-sm text-foreground">{allocation.projectId}</strong>
+              </div>
+              <span className="text-sm font-mono text-foreground">
+                ${(allocation.amountCents / 100).toFixed(2)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-muted-foreground/70">
+              <span>Card: •••• {allocation.cardId.slice(-4)}</span>
+              <Badge
+                variant={allocation.status === "active" ? "default" : "secondary"}
+                className="text-[10px] h-4"
+              >
+                {allocation.status}
+              </Badge>
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function FoodOrderCard({ order }: { order: NonNullable<DashboardMessage["foodOrder"]> }) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 mb-1">
+        <UtensilsCrossed className="h-3.5 w-3.5 text-primary" />
+        <span className="text-xs font-medium text-foreground">
+          Team Lunch — {order.teamName}
+        </span>
+      </div>
+
+      <Card className="bg-card border-border">
+        <CardContent className="p-3 space-y-2">
+          <div className="flex items-center gap-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <Users className="h-3 w-3" /> {order.headcount} people
+            </span>
+            <span className="flex items-center gap-1">
+              <DollarSign className="h-3 w-3" /> ~${(order.budgetPerHeadCents / 100).toFixed(0)}/person
+            </span>
+          </div>
+
+          {order.dietary.length > 0 && (
+            <div className="flex items-center gap-1 flex-wrap">
+              <Leaf className="h-3 w-3 text-green-500 flex-shrink-0" />
+              {order.dietary.map((d) => (
+                <span key={d} className="text-[11px] bg-green-500/10 text-green-600 px-1.5 py-0.5 rounded">
+                  {d}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {order.allergens.length > 0 && (
+            <div className="flex items-center gap-1 flex-wrap">
+              <ShieldAlert className="h-3 w-3 text-red-400 flex-shrink-0" />
+              {order.allergens.map((a) => (
+                <span key={a} className="text-[11px] bg-red-500/10 text-red-500 px-1.5 py-0.5 rounded">
+                  {a}
+                </span>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {order.recommendations.length > 0 && (
+        <div className="space-y-1.5">
+          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            Recommendations
+          </span>
+          {order.recommendations.map((rec) => (
+            <Card key={rec.url} className="bg-card border-border">
+              <CardContent className="p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <strong className="text-sm text-foreground leading-tight">
+                    {rec.restaurantName}
+                  </strong>
+                  <a href={rec.url} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0 mt-0.5 hover:text-primary" />
+                  </a>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{rec.reason}</p>
+                <div className="flex items-center justify-between text-[11px] text-muted-foreground/60 mt-1">
+                  <span>{rec.estimatedCostPerHead}</span>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {order.payment && (
+        <Card className="bg-green-500/5 border-green-500/20">
+          <CardContent className="p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              <span className="text-sm text-foreground font-medium">
+                Payment {order.payment.status}
+              </span>
+            </div>
+            <span className="text-sm font-mono text-green-600">
+              ${(order.payment.totalCents / 100).toFixed(2)}
+            </span>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 function MessageBubble({ message }: { message: ChatItem }) {
   if (message.role === "user") {
     return (
@@ -467,6 +623,10 @@ function MessageBubble({ message }: { message: ChatItem }) {
           </p>
           {isPending ? (
             <ExaSearchingSkeleton useCase={useCase} />
+          ) : message.budgetAllocations?.length ? (
+            <BudgetAllocationsCard allocations={message.budgetAllocations} />
+          ) : message.foodOrder ? (
+            <FoodOrderCard order={message.foodOrder} />
           ) : message.exaVerdict ? (
             <ExaVerdictCard verdict={message.exaVerdict} />
           ) : message.exaCVE ? (
