@@ -21,6 +21,7 @@ const AVAILABLE_TOOLS = [
   { name: "updateGithub", description: "Create PRs, issues, or push code changes" },
   { name: "makePayment", description: "Set or distribute budget to projects via Stripe virtual cards" },
   { name: "buySomething", description: "Order food, plan a team lunch or dinner — reads dietary profiles, searches restaurants via Exa, charges via Stripe. Use for any food/meal/dinner/lunch/catering request." },
+  { name: "queryTeamDietary", description: "Retrieve team dietary profiles (restrictions, allergens, cuisine prefs) from company knowledge base. Always use before buySomething." },
 ] as const;
 
 const SYSTEM_PROMPT = `You are a tool router for an AI assistant called "Company Brain". Given the user's message and conversation history, decide which tools should be called to fulfill the request.
@@ -34,7 +35,7 @@ Rules:
 - Only include queryExa if the user asks about public/external information, fact-checking, vulnerabilities, or news.
 - Only include queryRepos if the user asks about dependency monitoring, CVEs in their repos, or package vulnerabilities.
 - Include makePayment if the user mentions budget, allocate, distribute funds, or set spending limits for projects.
-- Include buySomething if the user mentions ordering food, team lunch, team dinner, planning a meal, catering, dinner, lunch, or any food-related request.
+- Include queryTeamDietary AND buySomething if the user mentions ordering food, team lunch, team dinner, planning a meal, catering, dinner, lunch, or any food-related request. Always include queryTeamDietary before buySomething.
 - Return 1-4 tools max. Fewer is better.
 
 Respond with ONLY valid JSON in this format:
@@ -113,7 +114,7 @@ function fallbackRoute(message: string): RoutedTools {
     tools.push("makePayment");
   }
   if (/order.*food|team.*lunch|team.*dinner|cater|meal|dinner|lunch.*for|food.*for/i.test(lower)) {
-    tools.push("buySomething");
+    tools.push("queryTeamDietary", "buySomething");
   }
 
   return { tools, reasoning: "Fallback regex routing (Bedrock unavailable)" };

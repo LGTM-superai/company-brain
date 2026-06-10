@@ -39,30 +39,21 @@ export async function createProjectBudget(
 ): Promise<BudgetAllocation> {
   const stripe = getStripe();
 
+  const financialAccount = await getOrCreateTreasuryAccount(stripe);
+
   const cardholder = await stripe.issuing.cardholders.create({
     name: `Project: ${projectName}`,
     email: "brain-agent@company.com",
     phone_number: "+15555550100",
     status: "active",
-    type: "individual",
+    type: "company",
     billing: {
       address: {
-        line1: "1 Market St",
-        city: "San Francisco",
-        state: "CA",
-        postal_code: "94105",
-        country: "US",
-      },
-    },
-    individual: {
-      first_name: "Company",
-      last_name: "Brain",
-      dob: { day: 1, month: 1, year: 1990 },
-      card_issuing: {
-        user_terms_acceptance: {
-          date: Math.floor(Date.now() / 1000),
-          ip: "127.0.0.1",
-        },
+        line1: "1 Raffles Place",
+        city: "Singapore",
+        state: "SG",
+        postal_code: "048616",
+        country: "SG",
       },
     },
   });
@@ -72,6 +63,7 @@ export async function createProjectBudget(
     currency,
     type: "virtual",
     status: "active",
+    financial_account: financialAccount.id,
     spending_controls: {
       spending_limits: [{ amount: amountCents, interval: "all_time" }],
     },
@@ -106,19 +98,89 @@ export async function chargeFoodOrder(
   amountCents: number,
   description: string,
   currency = "sgd",
-): Promise<{ paymentIntentId: string; status: string }> {
+): Promise<{ paymentIntentId: string; status: string; cardId?: string; financialAccount?: string }> {
   const stripe = getStripe();
 
-  const intent = await stripe.paymentIntents.create({
+  const financialAccount = await getOrCreateTreasuryAccount(stripe);
+  const card = await getOrCreateIssuingCard(stripe, financialAccount.id, currency);
+
+  const authorization = await stripe.testHelpers.issuing.authorizations.create({
     amount: amountCents,
     currency,
-    description,
-    automatic_payment_methods: { enabled: true, allow_redirects: "never" },
-    metadata: { source: "company-brain", type: "food_order" },
+    card: card.id,
+    merchant_data: {
+      category: "eating_places_restaurants",
+      name: description.slice(0, 25),
+      network_id: "1234567890",
+    },
   });
 
+  if (authorization.status === "pending") {
+    await stripe.testHelpers.issuing.authorizations.capture(authorization.id);
+  }
+
   return {
-    paymentIntentId: intent.id,
-    status: intent.status,
+    paymentIntentId: authorization.id,
+    status: authorization.status === "pending" ? "succeeded" : authorization.status,
+    cardId: card.id,
+    financialAccount: financialAccount.id,
   };
+}
+
+async function getOrCreateTreasuryAccount(stripe: Stripe) {
+  const existing = await stripe.treasury.financialAccounts.list({ limit: 1 });
+  if (existing.data.length > 0) return existing.data[0];
+
+  return stripe.treasury.financialAccounts.create({
+    supported_currencies: ["sgd", "usd"],
+    features: {
+      card_issuing: { requested: true },
+      financial_addresses: { aba: { requested: true } },
+    },
+  });
+}
+
+async function getOrCreateIssuingCard(stripe: Stripe, financialAccountId: string, currency: string) {
+  const existingCards = await stripe.issuing.cards.list({
+    status: "active",
+    limit: 1,
+  });
+
+  if (existingCards.data.length > 0) return existingCards.data[0];
+
+  let cardholder: Stripe.Issuing.Cardholder;
+  const existingHolders = await stripe.issuing.cardholders.list({ limit: 1, status: "active" });
+
+  if (existingHolders.data.length > 0) {
+    cardholder = existingHolders.data[0];
+  } else {
+    cardholder = await stripe.issuing.cardholders.create({
+      name: "Company Brain Treasury",
+      email: "treasury@company.com",
+      phone_number: "+15555550100",
+      status: "active",
+      type: "company",
+      billing: {
+        address: {
+          line1: "1 Raffles Place",
+          city: "Singapore",
+          state: "SG",
+          postal_code: "048616",
+          country: "SG",
+        },
+      },
+    });
+  }
+
+  return stripe.issuing.cards.create({
+    cardholder: cardholder.id,
+    currency,
+    type: "virtual",
+    status: "active",
+    financial_account: financialAccountId,
+    spending_controls: {
+      spending_limits: [{ amount: 500_000, interval: "monthly" }],
+      allowed_categories: ["eating_places_restaurants", "fast_food_restaurants"],
+    },
+  });
 }

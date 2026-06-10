@@ -639,6 +639,40 @@ function FoodOrderCard({ order }: { order: NonNullable<DashboardMessage["foodOrd
         </div>
       )}
 
+      {order.lineItems && order.lineItems.length > 0 && (
+        <div className="space-y-1.5">
+          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            Order Summary
+          </span>
+          <Card className="bg-card border-border">
+            <CardContent className="p-3 space-y-1.5">
+              {order.lineItems.map((li) => (
+                <div key={li.person} className="flex items-center justify-between gap-2">
+                  <div className="flex-grow min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-foreground">{li.person}</span>
+                      {li.notes && (
+                        <span className="text-[10px] text-muted-foreground/60 italic truncate">{li.notes}</span>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-muted-foreground">{li.item}</span>
+                  </div>
+                  <span className="text-xs font-mono text-foreground flex-shrink-0">
+                    ${(li.priceCents / 100).toFixed(2)}
+                  </span>
+                </div>
+              ))}
+              <div className="border-t border-border pt-1.5 mt-1.5 flex items-center justify-between">
+                <span className="text-xs font-medium text-foreground">Total</span>
+                <span className="text-xs font-mono font-semibold text-foreground">
+                  ${(order.lineItems.reduce((sum, li) => sum + li.priceCents, 0) / 100).toFixed(2)}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
       {order.payment && (
         <Card className="bg-green-500/5 border-green-500/20">
           <CardContent className="p-3 flex items-center justify-between">
@@ -659,19 +693,29 @@ function FoodOrderCard({ order }: { order: NonNullable<DashboardMessage["foodOrd
 }
 
 function KBDocumentsCard({ documents }: { documents: NonNullable<DashboardMessage["kbDocuments"]> }) {
-  const handleDownload = async (doc: typeof documents[number]) => {
-    const url = doc.downloadUrl;
-    if (!url) return;
-    try {
-      const res = await fetch(url);
-      const data = await res.json();
-      if (data.downloadUrl) {
-        window.open(data.downloadUrl, "_blank");
-      }
-    } catch {
-      // Fallback: open the API endpoint directly
-      window.open(url, "_blank");
+  const [expandedDoc, setExpandedDoc] = useState<string | null>(null);
+
+  const handleDownload = (doc: typeof documents[number]) => {
+    if (doc.content) {
+      const blob = new Blob([doc.content], { type: doc.contentType ?? "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${doc.title.replace(/\s+/g, "-").toLowerCase()}.${doc.contentType === "text/markdown" ? "md" : "txt"}`;
+      a.click();
+      URL.revokeObjectURL(url);
+      return;
     }
+    const apiUrl = doc.downloadUrl;
+    if (!apiUrl) return;
+    fetch(apiUrl)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.downloadUrl) window.open(data.downloadUrl, "_blank");
+      })
+      .catch(() => {
+        if (apiUrl) window.open(apiUrl, "_blank");
+      });
   };
 
   return (
@@ -682,39 +726,59 @@ function KBDocumentsCard({ documents }: { documents: NonNullable<DashboardMessag
           Documents ({documents.length})
         </span>
       </div>
-      {documents.map((doc) => (
-        <Card key={doc.id ?? doc.key} className="bg-card border-border">
-          <CardContent className="p-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex-grow min-w-0">
-                <strong className="text-sm text-foreground leading-tight block truncate">
-                  {doc.title}
-                </strong>
-                {doc.summary && (
-                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{doc.summary}</p>
-                )}
-                <div className="flex items-center gap-2 mt-1.5">
-                  <Badge variant="secondary" className="text-[10px] h-5">{doc.domain}</Badge>
-                  <Badge className="text-[10px] h-5 bg-accent/10 text-accent">{doc.sensitivity}</Badge>
-                  {doc.tags?.slice(0, 2).map((tag) => (
-                    <span key={tag} className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{tag}</span>
-                  ))}
+      {documents.map((doc) => {
+        const docId = doc.id ?? doc.key ?? doc.title;
+        const isExpanded = expandedDoc === docId;
+        return (
+          <Card key={docId} className="bg-card border-border">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div
+                  className="flex-grow min-w-0 cursor-pointer"
+                  onClick={() => doc.content && setExpandedDoc(isExpanded ? null : docId)}
+                >
+                  <strong className="text-sm text-foreground leading-tight block truncate">
+                    {doc.title}
+                  </strong>
+                  {doc.summary && !isExpanded && (
+                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{doc.summary}</p>
+                  )}
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <Badge variant="secondary" className="text-[10px] h-5">{doc.domain}</Badge>
+                    <Badge className="text-[10px] h-5 bg-accent/10 text-accent">{doc.sensitivity}</Badge>
+                    {doc.content && (
+                      <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">
+                        {isExpanded ? "click to collapse" : "click to view"}
+                      </span>
+                    )}
+                    {doc.tags?.slice(0, 2).map((tag) => (
+                      <span key={tag} className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{tag}</span>
+                    ))}
+                  </div>
                 </div>
-              </div>
-              {doc.downloadUrl && (
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10 flex-shrink-0"
                   onClick={() => handleDownload(doc)}
+                  title="Download file"
                 >
                   <Download className="h-4 w-4" />
                 </Button>
+              </div>
+              {isExpanded && doc.content && (
+                <div className="mt-3 pt-3 border-t border-border">
+                  <div className="bg-muted/50 rounded-md p-3 max-h-80 overflow-y-auto text-xs prose prose-xs dark:prose-invert max-w-none break-words">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {doc.content}
+                    </ReactMarkdown>
+                  </div>
+                </div>
               )}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+            </CardContent>
+          </Card>
+        );
+      })}
     </div>
   );
 }
@@ -728,7 +792,8 @@ const TOOL_DESCRIPTIONS: Record<string, { label: string; desc: string }> = {
   updateGithub: { label: "GitHub", desc: "Creating issue or commenting" },
   queryExa: { label: "Exa Search", desc: "Searching the web" },
   queryRepos: { label: "CVE Monitors", desc: "Checking registered repos" },
-  queryKnowledgeBase: { label: "Knowledge Base", desc: "Searching internal docs" },
+  queryKnowledgeBase: { label: "Knowledge Base", desc: "Searching S3 + Notion" },
+  queryTeamDietary: { label: "Team Dietary", desc: "Retrieving dietary profiles from KB" },
   makePayment: { label: "Stripe", desc: "Processing payment" },
   buySomething: { label: "Food Order", desc: "Finding restaurants and ordering" },
   "delegate:searcher": { label: "Searcher Agent", desc: "Gathering data from company sources" },

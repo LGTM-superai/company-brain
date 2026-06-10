@@ -46,6 +46,23 @@ export type PendingAction =
       changes: TicketFieldChanges;
       reason: string;
       createdAt: string;
+    }
+  | {
+      actionId: string;
+      type: "food_order";
+      phase: "pick_restaurant" | "choose_items" | "confirm_order" | "confirm_payment";
+      teamName: string;
+      headcount: number;
+      budgetPerHeadCents: number;
+      totalCents: number;
+      selectedRestaurant?: string;
+      previousRestaurants?: string[];
+      dietary: string[];
+      allergens: string[];
+      userItemRequest?: string;
+      lineItems?: { person: string; item: string; priceCents: number; notes?: string }[];
+      reason: string;
+      createdAt: string;
     };
 
 export async function ensureConversation(conversationId: string, title: string) {

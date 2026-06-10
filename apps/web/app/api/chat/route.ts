@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import {
   generateText,
   streamText,
-  stepCountIs,
   tool,
   type ModelMessage,
 } from "ai";
@@ -12,13 +11,14 @@ import type {
   AgentId,
   AgentPlan,
   BudgetAllocationEvent,
+  FoodLineItem,
   FoodOrderEvent,
   PlanStep,
   RepoMonitor,
   ToolName,
 } from "@company-brain/shared";
 import { users, resolveAssignee, type PersonId } from "@company-brain/shared";
-import { toolRegistry } from "@company-brain/tools";
+import { toolRegistry, getTeamProfile } from "@company-brain/tools";
 import {
   ROUTER_PROMPT,
   SEARCHER_PROMPT,
@@ -64,8 +64,8 @@ import {
   type TicketFieldChanges,
 } from "../../../lib/run-history";
 import { gmt8TodayFromNow } from "../../../lib/time";
-import { runSpecialist } from "../../../lib/agent-delegation";
-import { queryKnowledgeBase } from "../../../lib/knowledge-base";
+import { runSpecialist, type SpecialistResult } from "../../../lib/agent-delegation";
+import { searchNotionKB, fetchNotionPageContent } from "../../../lib/knowledge-base";
 import { searchDocuments, fetchDocumentContent, listBucketDocuments } from "../../../lib/s3-retrieval";
 
 export const runtime = "nodejs";
@@ -154,7 +154,60 @@ export async function POST(request: Request) {
   await persistUserMessage(conversationId, rawMessage, nextOrder++);
 
   let pendingAction = await getPendingAction(conversationId);
-  let approvalGranted = pendingAction ? isApprovalMessage(rawMessage) : false;
+  let approvalGranted = pendingAction
+    ? isApprovalMessage(rawMessage) || isFoodOrderSelection(rawMessage, pendingAction)
+    : false;
+
+  // If user selected a restaurant (phase 1 → choose_items), transition to ask what they want
+  if (approvalGranted && pendingAction?.type === "food_order" && pendingAction.phase === "pick_restaurant" && !isApprovalMessage(rawMessage)) {
+    pendingAction.selectedRestaurant = rawMessage.trim();
+    pendingAction.phase = "choose_items";
+    pendingAction.reason = `You picked ${rawMessage.trim()}. What would you like to order for the team?`;
+    await setPendingAction(conversationId, pendingAction);
+    // Don't delegate — just respond with the question
+    approvalGranted = false;
+  }
+
+  // If user told us what they want (choose_items → generate line items), save their request
+  if (approvalGranted && pendingAction?.type === "food_order" && pendingAction.phase === "choose_items") {
+    pendingAction.userItemRequest = rawMessage.trim();
+    pendingAction.phase = "confirm_order";
+    await setPendingAction(conversationId, pendingAction);
+  }
+
+  // If user confirmed the line items (confirm_order → confirm_payment), transition to payment confirmation
+  if (approvalGranted && pendingAction?.type === "food_order" && pendingAction.phase === "confirm_order" && pendingAction.lineItems) {
+    pendingAction.phase = "confirm_payment";
+    pendingAction.reason = `Ready to charge SGD ${((pendingAction.totalCents ?? 0) / 100).toFixed(2)} for ${pendingAction.headcount} people from ${pendingAction.selectedRestaurant ?? "the restaurant"}. Shall I proceed with payment?`;
+    await setPendingAction(conversationId, pendingAction);
+    approvalGranted = false;
+  }
+
+  // If user wants different options, save previous restaurant names and clear so Phase 1 re-runs
+  let previousRestaurants: string[] = [];
+  if (pendingAction?.type === "food_order" && !approvalGranted && isFoodReSearchRequest(rawMessage)) {
+    // Collect restaurant names already shown from recent food_order events
+    const recentFoodMessages = await MessageModel.find({
+      conversationId,
+      role: "tool",
+      toolName: "buySomething",
+      foodOrder: { $exists: true },
+    }).sort({ order: -1 }).limit(3).lean();
+
+    for (const msg of recentFoodMessages) {
+      const order = msg.foodOrder as { recommendations?: { restaurantName: string }[] } | undefined;
+      if (order?.recommendations) {
+        for (const rec of order.recommendations) {
+          if (rec.restaurantName && !previousRestaurants.includes(rec.restaurantName)) {
+            previousRestaurants.push(rec.restaurantName);
+          }
+        }
+      }
+    }
+
+    await clearPendingAction(conversationId);
+    pendingAction = null;
+  }
 
   if (!pendingAction && isSlackSendConfirmation(rawMessage)) {
     const recoveredAction = await recoverPendingSlackActionFromDraft(conversationId);
@@ -183,7 +236,7 @@ export async function POST(request: Request) {
       send("meta", { conversationId });
 
       try {
-        const sharedContext = {
+        const sharedContext: SharedContext = {
           conversationId,
           approvalGranted,
           pendingAction,
@@ -196,6 +249,17 @@ export async function POST(request: Request) {
               nextOrder = value;
             },
           },
+          completedDelegations: new Map(),
+          awaitingApproval: null,
+          previousRestaurants,
+        };
+
+        const shouldStop = ({ steps }: { steps: Array<unknown> }) => {
+          if (sharedContext.awaitingApproval) return true;
+          // For food orders: proposePlan (step 1) + delegateToPayments (step 2) is enough
+          // For other flows: allow up to 6 steps for multi-agent chains
+          if (sharedContext.completedDelegations.size > 0 && steps.length >= 3) return true;
+          return steps.length >= 6;
         };
 
         const result = streamText({
@@ -204,8 +268,8 @@ export async function POST(request: Request) {
           messages: modelMessages,
           tools: buildDelegationTools(sharedContext),
           toolChoice,
-          stopWhen: stepCountIs(6),
-          maxOutputTokens: 600,
+          stopWhen: shouldStop,
+          maxOutputTokens: 2400,
           experimental_onToolCallStart: async (event) => {
             const toolName = event.toolCall.toolName as ToolName;
             const args = event.toolCall.input as Record<string, unknown> | undefined;
@@ -266,7 +330,7 @@ export async function POST(request: Request) {
           }
         }
 
-        const answer = fullAnswer.trim() || "Done.";
+        const answer = fullAnswer.trim() || sharedContext.awaitingApproval?.text || "Done.";
         send("done", { content: answer });
 
         await persistAssistantMessage(conversationId, answer, nextOrder++);
@@ -303,7 +367,33 @@ type SharedContext = {
   nextOrderRef: { get: () => number; set: (value: number) => void };
   currentPlanId?: string;
   planSteps?: PlanStep[];
+  completedDelegations: Map<string, SpecialistResult>;
+  awaitingApproval: SpecialistResult | null;
+  previousRestaurants: string[];
 };
+
+function delegationKey(agentId: AgentId, _input: Record<string, unknown>) {
+  // Key by agent only — each agent should run at most once per turn.
+  // The router rephrases the task string on retries, so input-based keys don't prevent duplicates.
+  return agentId;
+}
+
+function guardApprovalHalt(ctx: SharedContext): SpecialistResult | null {
+  if (ctx.awaitingApproval) {
+    return {
+      ok: false,
+      text: ctx.awaitingApproval.text,
+      toolCalls: [],
+    };
+  }
+  return null;
+}
+
+function markIfApproval(ctx: SharedContext, result: SpecialistResult) {
+  if (result.requiresApproval) {
+    ctx.awaitingApproval = result;
+  }
+}
 
 function emitStepStart(ctx: SharedContext, agentId: AgentId) {
   if (!ctx.currentPlanId || !ctx.planSteps) return;
@@ -335,7 +425,7 @@ function buildDelegationTools(ctx: SharedContext) {
           tool: z.enum([
             "queryNotion", "updateNotion", "createNotionTicket", "querySlack", "updateSlack",
             "queryGithub", "updateGithub", "queryExa", "queryRepos",
-            "queryKnowledgeBase", "makePayment", "buySomething",
+            "queryKnowledgeBase", "queryTeamDietary", "makePayment", "buySomething",
           ]).describe("Primary tool for this step"),
           description: z.string().describe("What this step does (user-facing, concise)"),
         })).min(1).max(6).describe("Ordered steps in the plan"),
@@ -379,6 +469,12 @@ function buildDelegationTools(ctx: SharedContext) {
           .describe("Preferred data sources to query"),
       }),
       execute: async (input) => {
+        const halted = guardApprovalHalt(ctx);
+        if (halted) return halted;
+        const key = delegationKey("searcher", input);
+        const cached = ctx.completedDelegations.get(key);
+        if (cached) return cached;
+
         emitStepStart(ctx, "searcher");
         ctx.send("agent_event", { type: "agent_delegation", agent: "searcher", query: input.query });
         const result = await runSpecialist({
@@ -393,6 +489,8 @@ function buildDelegationTools(ctx: SharedContext) {
           pendingAction: null,
         });
         emitStepDone(ctx, "searcher", result.ok);
+        ctx.completedDelegations.set(key, result);
+        markIfApproval(ctx, result);
         return result;
       },
     }),
@@ -404,6 +502,12 @@ function buildDelegationTools(ctx: SharedContext) {
         context: z.string().optional().describe("Relevant context from prior search results"),
       }),
       execute: async (input) => {
+        const halted = guardApprovalHalt(ctx);
+        if (halted) return halted;
+        const key = delegationKey("updater", input);
+        const cached = ctx.completedDelegations.get(key);
+        if (cached) return cached;
+
         emitStepStart(ctx, "updater");
         ctx.send("agent_event", { type: "agent_delegation", agent: "updater", task: input.task });
         const result = await runSpecialist({
@@ -418,6 +522,8 @@ function buildDelegationTools(ctx: SharedContext) {
           pendingAction: ctx.pendingAction,
         });
         emitStepDone(ctx, "updater", result.ok || !!result.requiresApproval);
+        ctx.completedDelegations.set(key, result);
+        markIfApproval(ctx, result);
         return result;
       },
     }),
@@ -428,6 +534,12 @@ function buildDelegationTools(ctx: SharedContext) {
         task: z.string().describe("The coding or GitHub task"),
       }),
       execute: async (input) => {
+        const halted = guardApprovalHalt(ctx);
+        if (halted) return halted;
+        const key = delegationKey("coder", input);
+        const cached = ctx.completedDelegations.get(key);
+        if (cached) return cached;
+
         emitStepStart(ctx, "coder");
         ctx.send("agent_event", { type: "agent_delegation", agent: "coder", task: input.task });
         const result = await runSpecialist({
@@ -442,6 +554,8 @@ function buildDelegationTools(ctx: SharedContext) {
           pendingAction: ctx.pendingAction,
         });
         emitStepDone(ctx, "coder", result.ok);
+        ctx.completedDelegations.set(key, result);
+        markIfApproval(ctx, result);
         return result;
       },
     }),
@@ -452,15 +566,29 @@ function buildDelegationTools(ctx: SharedContext) {
         task: z.string().describe("The payment or purchasing request"),
       }),
       execute: async (input) => {
+        const halted = guardApprovalHalt(ctx);
+        if (halted) return halted;
+        const key = delegationKey("paymentsManager", input);
+        const cached = ctx.completedDelegations.get(key);
+        if (cached) return cached;
+
         emitStepStart(ctx, "paymentsManager");
         ctx.send("agent_event", {
           type: "agent_delegation",
           agent: "paymentsManager",
           task: input.task,
         });
+        // Only tell the agent "approval granted" if user confirmed payment in the final phase
+        const foodConfirmGranted = ctx.approvalGranted
+          && ctx.pendingAction?.type === "food_order"
+          && ctx.pendingAction.phase === "confirm_payment"
+          && !!ctx.pendingAction.lineItems;
+        const paymentsSystemPrompt = ctx.pendingAction
+          ? `${PAYMENTS_PROMPT}\n\nPending action: ${JSON.stringify(ctx.pendingAction)}\nApproval granted: ${foodConfirmGranted ? "yes — call buySomething with confirm=true immediately" : "no — do NOT set confirm=true"}`
+          : PAYMENTS_PROMPT;
         const result = await runSpecialist({
           agentId: "paymentsManager",
-          systemPrompt: PAYMENTS_PROMPT,
+          systemPrompt: paymentsSystemPrompt,
           tools: buildPaymentsTools(ctx),
           query: input.task,
           conversationId: ctx.conversationId,
@@ -468,8 +596,17 @@ function buildDelegationTools(ctx: SharedContext) {
           send: ctx.send,
           approvalGranted: ctx.approvalGranted,
           pendingAction: ctx.pendingAction,
+          maxSteps: 4,
+          forceToolUse: true,
         });
         emitStepDone(ctx, "paymentsManager", result.ok);
+        ctx.completedDelegations.set(key, result);
+        // Check if buySomething staged a new or updated pending action during execution
+        const freshPending = await getPendingAction(ctx.conversationId);
+        if (freshPending && (!ctx.pendingAction || freshPending.actionId !== ctx.pendingAction.actionId)) {
+          result.requiresApproval = true;
+        }
+        markIfApproval(ctx, result);
         return result;
       },
     }),
@@ -639,80 +776,210 @@ function buildSearcherTools(ctx: SharedContext) {
     }),
     queryKnowledgeBase: tool({
       description:
-        "Query the company knowledge base (S3 + DocumentDB). Three modes: 'search' returns document metadata with download cards — use when user says 'give me the file', 'find the doc', or asks for a list. 'read' retrieves full content — use when user says 'summarize', 'explain', 'what does it say', or asks about content. 'both' (DEFAULT) returns download cards AND fetches content for summarization — use when the user's intent is ambiguous or they just ask a general question about a topic.",
+        "Query the company knowledge base (S3 + Notion). Always searches both sources in parallel. Three modes: 'search' returns document metadata with download cards — use when user says 'give me the file', 'find the doc', or asks for a list. 'read' retrieves full content — use when user says 'summarize', 'explain', 'what does it say', or asks about content. 'both' (DEFAULT) returns download cards AND fetches content for summarization — use when the user's intent is ambiguous or they just ask a general question about a topic.",
       inputSchema: z.object({
         query: z.string().describe("Search query or document topic"),
         mode: z.enum(["search", "read", "both"]).default("both").describe("'search' = file cards only, 'read' = content only for summarization, 'both' = file cards + content (DEFAULT)"),
         domain: z.enum(["engineering", "product", "people", "business", "general"]).optional(),
         tags: z.array(z.string()).optional().describe("Filter by document tags"),
-        documentKey: z.string().optional().describe("Fetch a specific document by key"),
+        documentKey: z.string().optional().describe("Fetch a specific S3 document by key"),
+        notionPageId: z.string().optional().describe("Fetch a specific Notion page by ID"),
         username: z.string().optional().describe("Requesting user for access control"),
       }),
       execute: async (input) => {
         if (input.documentKey) {
           return fetchDocumentContent(input.documentKey, input.username);
         }
+        if (input.notionPageId) {
+          return fetchNotionPageContent(input.notionPageId, input.username);
+        }
 
-        const s3Result = await searchDocuments({
-          query: input.query,
-          domain: input.domain,
-          tags: input.tags,
-          username: input.username,
-        });
+        const [s3Result, notionResult] = await Promise.all([
+          searchDocuments({
+            query: input.query,
+            domain: input.domain,
+            tags: input.tags,
+            username: input.username,
+          }),
+          searchNotionKB({
+            query: input.query,
+            domain: input.domain,
+            tags: input.tags,
+            username: input.username,
+          }),
+        ]);
 
-        const hasS3Docs = s3Result.data.documents.length > 0;
+        const s3Docs = s3Result.data.documents;
+        const notionDocs = notionResult.data.documents;
+        const allDenied = notionResult.accessDenied ?? [];
+
+        // Fetch content for top documents to serve as inline artifacts
+        const s3DocsWithContent = await Promise.all(
+          s3Docs.slice(0, 3).map(async (d) => {
+            const contentResult = await fetchDocumentContent(d.key, input.username);
+            return {
+              ...d,
+              source: "s3" as const,
+              content: contentResult.ok ? (contentResult.data as any)?.content : undefined,
+              contentType: contentResult.ok ? (contentResult.data as any)?.contentType : undefined,
+            };
+          }),
+        );
+        const remainingS3Docs = s3Docs.slice(3).map((d) => ({ ...d, source: "s3" as const }));
+
+        const notionDocsWithContent = await Promise.all(
+          notionDocs.slice(0, 3).map(async (d) => {
+            const contentResult = await fetchNotionPageContent(d.id, input.username);
+            return {
+              ...d,
+              downloadUrl: d.url,
+              content: contentResult.ok ? (contentResult.data as any)?.content : undefined,
+              contentType: "text/markdown",
+            };
+          }),
+        );
+        const remainingNotionDocs = notionDocs.slice(3).map((d) => ({ ...d, downloadUrl: d.url }));
+
+        const allDocs = [
+          ...s3DocsWithContent,
+          ...remainingS3Docs,
+          ...notionDocsWithContent,
+          ...remainingNotionDocs,
+        ];
 
         if (input.mode === "read") {
-          if (hasS3Docs) {
-            const topDoc = s3Result.data.documents[0];
-            return fetchDocumentContent(topDoc.key, input.username);
+          if (s3DocsWithContent.length > 0 && s3DocsWithContent[0].content) {
+            return {
+              ok: true,
+              tool: "queryKnowledgeBase",
+              summary: `Retrieved "${s3DocsWithContent[0].title}".`,
+              data: s3DocsWithContent[0],
+            };
           }
-          return queryKnowledgeBase(input.query, input.domain, input.username);
+          if (notionDocsWithContent.length > 0 && notionDocsWithContent[0].content) {
+            return {
+              ok: true,
+              tool: "queryKnowledgeBase",
+              summary: `Retrieved "${notionDocsWithContent[0].title}".`,
+              data: notionDocsWithContent[0],
+            };
+          }
+          return {
+            ok: true,
+            tool: "queryKnowledgeBase",
+            summary: `No documents found matching "${input.query}" in S3 or Notion.`,
+            data: { documents: [] },
+          };
         }
 
-        // For "search" and "both": emit document cards
-        let result;
-        if (hasS3Docs) {
-          result = s3Result;
-        } else {
-          result = queryKnowledgeBase(input.query, input.domain, input.username);
+        if (allDocs.length > 0) {
+          ctx.events.push({ type: "kb_documents", documents: allDocs as any });
+          await persistToolCard(ctx.conversationId, "queryKnowledgeBase", "Knowledge Base", ctx.nextOrderRef, {
+            kbDocuments: allDocs,
+          });
         }
 
-        const docs = hasS3Docs
-          ? s3Result.data.documents
-          : (result as { results?: unknown[] }).results ?? [];
-
-        if (Array.isArray(docs) && docs.length > 0) {
-          ctx.events.push({ type: "kb_documents", documents: docs as any });
-        }
+        const merged = {
+          ok: true as const,
+          tool: "queryKnowledgeBase",
+          summary: `Found ${allDocs.length} document(s) (${s3Docs.length} from S3, ${notionDocs.length} from Notion).${allDenied.length ? ` ${allDenied.length} denied.` : ""}`,
+          data: { documents: allDocs },
+          accessDenied: allDenied,
+        };
 
         if (input.mode === "search") {
-          return result;
+          return merged;
         }
 
-        // mode === "both": also fetch content of the top document for summarization
-        if (hasS3Docs) {
+        // mode === "both": content already fetched above, include top doc for LLM summarization
+        const topDoc = s3DocsWithContent[0] ?? notionDocsWithContent[0];
+        if (topDoc?.content) {
+          return {
+            ...merged,
+            topDocument: topDoc,
+            message: `Found ${allDocs.length} document(s). Top result content included for summarization.`,
+          };
+        }
+
+        return {
+          ...merged,
+          message: `No documents found matching "${input.query}" in S3 or Notion.`,
+        };
+      },
+    }),
+    queryTeamDietary: tool({
+      description:
+        "Retrieve team dietary profiles from the company knowledge base. Use this BEFORE ordering food to get dietary restrictions, allergens, and cuisine preferences for a team.",
+      inputSchema: z.object({
+        teamName: z.string().describe("Team name: tech, product, or design"),
+      }),
+      execute: async (input) => {
+        const query = `${input.teamName} dietary`;
+        const s3Result = await searchDocuments({
+          query,
+          domain: "people",
+          username: "admin",
+        });
+
+        if (s3Result.data.documents.length > 0) {
           const topDoc = s3Result.data.documents[0];
-          const contentResult = await fetchDocumentContent(topDoc.key, input.username);
+          const content = await fetchDocumentContent(topDoc.key, "admin");
           return {
-            ...result,
-            topDocument: contentResult.ok ? contentResult.data : undefined,
-            message: `Found ${docs.length} document(s). Top result content included for summarization.`,
+            ok: true,
+            tool: "queryTeamDietary",
+            summary: `Retrieved dietary profiles for ${input.teamName} team from KB.`,
+            data: content.ok ? content.data : { summary: topDoc.summary },
+            source: "s3",
           };
         }
 
-        // Fallback: return sample KB content if available
-        const kbResult = queryKnowledgeBase(input.query, input.domain, input.username);
-        const accessible = (kbResult as { results?: Array<{ id: string; title: string; summary: string }> }).results;
-        if (accessible?.length) {
+        const notionResult = await searchNotionKB({
+          query,
+          domain: "people",
+          username: "admin",
+        });
+
+        if (notionResult.data.documents.length > 0) {
+          const topDoc = notionResult.data.documents[0];
+          const content = await fetchNotionPageContent(topDoc.id, "admin");
           return {
-            ...result,
-            topDocument: { title: accessible[0].title, summary: accessible[0].summary },
-            message: `Found ${docs.length} document(s). Summary included.`,
+            ok: true,
+            tool: "queryTeamDietary",
+            summary: `Retrieved dietary profiles for ${input.teamName} team from Notion KB.`,
+            data: content.ok ? content.data : { title: topDoc.title },
+            source: "notion",
           };
         }
 
-        return result;
+        const profile = getTeamProfile(input.teamName);
+        if (profile) {
+          return {
+            ok: true,
+            tool: "queryTeamDietary",
+            summary: `Retrieved dietary profiles for ${input.teamName} team (${profile.headcount} people). Dietary: ${profile.combinedDietary.join(", ") || "none"}. Allergens: ${profile.combinedAllergens.join(", ") || "none"}.`,
+            data: {
+              teamName: profile.teamName,
+              headcount: profile.headcount,
+              members: profile.members.map((m) => ({
+                name: m.name,
+                dietary: m.dietary,
+                allergens: m.allergens,
+                cuisinePreferences: m.cuisinePreferences,
+                dislikes: m.dislikes,
+              })),
+              combinedDietary: profile.combinedDietary,
+              combinedAllergens: profile.combinedAllergens,
+              preferredCuisines: profile.preferredCuisines,
+            },
+            source: "internal",
+          };
+        }
+
+        return {
+          ok: false,
+          tool: "queryTeamDietary",
+          summary: `No dietary profiles found for team "${input.teamName}". Available teams: tech, product, design.`,
+        };
       },
     }),
   };
@@ -1054,26 +1321,170 @@ function buildPaymentsTools(ctx: SharedContext) {
     }),
     buySomething: tool({
       description:
-        "Order food for a team. Reads team dietary profiles, searches Exa for restaurant matches, and charges through Stripe when confirmed.",
+        "Order food for a team. Phases are managed by pending action state. Just call with teamName — the system routes to the correct phase automatically.",
       inputSchema: z.object({
-        teamName: z.string(),
-        budgetPerHeadCents: z.number().int().positive().optional(),
-        confirm: z.boolean().optional(),
+        teamName: z.string().describe("Team to order for: tech, product, or design"),
+        budgetPerHeadCents: z.number().int().positive().optional().describe("Budget per person in cents (default 2500 = SGD 25)"),
+        confirm: z.boolean().optional().describe("Set to true ONLY when system says approval granted"),
+        excludeRestaurants: z.array(z.string()).optional().describe("Restaurant names to exclude (already shown)"),
       }),
       execute: async (input) => {
-        const result = await toolRegistry.buySomething.run(input, {});
+        const pending = ctx.pendingAction?.type === "food_order" ? ctx.pendingAction : null;
+        const foodApprovalGranted = ctx.approvalGranted && !!pending;
+
+        // ─── Phase 3: user confirmed payment → charge Stripe (only when in confirm_payment phase) ───
+        if (input.confirm || (foodApprovalGranted && pending?.phase === "confirm_payment" && pending.lineItems)) {
+          const alreadyCharged = ctx.events.some(
+            (e) => e.type === "food_order" && "order" in e && (e as any).order?.payment,
+          );
+          if (alreadyCharged) {
+            return { ok: true, tool: "buySomething", summary: "Payment already processed." };
+          }
+
+          const teamName = pending?.teamName ?? input.teamName;
+          const budgetPerHead = pending?.budgetPerHeadCents ?? input.budgetPerHeadCents ?? 2500;
+          const headcount = pending?.headcount ?? 5;
+          const totalCents = pending?.totalCents ?? budgetPerHead * headcount;
+          const lineItems = pending?.lineItems;
+
+          const chargeResult = await toolRegistry.buySomething.run({
+            teamName,
+            budgetPerHeadCents: budgetPerHead,
+            confirm: true,
+          }, {});
+
+          if (chargeResult.ok && chargeResult.data) {
+            const data = chargeResult.data as {
+              team: { teamName: string; headcount: number; combinedDietary: string[]; combinedAllergens: string[] };
+              recommendations: FoodOrderEvent["recommendations"];
+              budgetPerHeadCents: number;
+              lineItems?: FoodLineItem[];
+              payment?: FoodOrderEvent["payment"];
+            };
+            const order: FoodOrderEvent = {
+              teamName: data.team.teamName,
+              headcount: data.team.headcount,
+              dietary: data.team.combinedDietary,
+              allergens: data.team.combinedAllergens,
+              recommendations: data.recommendations,
+              budgetPerHeadCents: data.budgetPerHeadCents,
+              lineItems: lineItems ?? data.lineItems,
+              payment: data.payment,
+            };
+
+            ctx.send("agent_event", { type: "food_order", order });
+            const sentEvent = { type: "food_order" as const, order, _sent: true };
+            ctx.events.push(sentEvent as typeof sentEvent & { _sent: boolean });
+            await persistToolCard(ctx.conversationId, "buySomething", "Food order charged", ctx.nextOrderRef, {
+              foodOrder: order,
+            });
+            await clearPendingAction(ctx.conversationId);
+            await auditExternalMutation(ctx.conversationId, {
+              system: "Stripe",
+              target: `Team lunch: ${teamName}`,
+              action: `Charged SGD ${(totalCents / 100).toFixed(2)} for ${headcount} people`,
+            });
+          }
+
+          return { ...chargeResult, pendingAction: null };
+        }
+
+        // ─── Phase 2: user told us what they want → generate line items + ask confirmation ───
+        if (foodApprovalGranted && pending?.phase === "confirm_order" && pending.userItemRequest && !pending.lineItems) {
+          const teamName = pending.teamName;
+          const budgetPerHead = pending.budgetPerHeadCents;
+          const headcount = pending.headcount;
+          const selectedRestaurant = pending.selectedRestaurant ?? "Selected restaurant";
+
+          const itemResult = await toolRegistry.buySomething.run({
+            teamName,
+            budgetPerHeadCents: budgetPerHead,
+            confirm: true,
+          }, {});
+
+          const itemData = itemResult.data as {
+            team: { teamName: string; headcount: number; combinedDietary: string[]; combinedAllergens: string[] };
+            lineItems?: FoodLineItem[];
+          } | undefined;
+
+          const lineItems: FoodLineItem[] = itemData?.lineItems ?? [];
+          const actualTotal = lineItems.reduce((sum, li) => sum + li.priceCents, 0) || pending.totalCents;
+
+          const order: FoodOrderEvent = {
+            teamName,
+            headcount,
+            dietary: pending.dietary,
+            allergens: pending.allergens,
+            recommendations: [{ restaurantName: selectedRestaurant, url: "", reason: "User selected", estimatedCostPerHead: `~$${(budgetPerHead / 100).toFixed(0)}/person` }],
+            budgetPerHeadCents: budgetPerHead,
+            lineItems,
+          };
+
+          ctx.send("agent_event", { type: "food_order", order });
+          const sentEvent = { type: "food_order" as const, order, _sent: true };
+          ctx.events.push(sentEvent as typeof sentEvent & { _sent: boolean });
+          await persistToolCard(ctx.conversationId, "buySomething", "Order preview", ctx.nextOrderRef, {
+            foodOrder: order,
+          });
+
+          const confirmAction: PendingAction = {
+            actionId: `${ctx.conversationId}-pending-food-confirm-${Date.now()}`,
+            type: "food_order",
+            phase: "confirm_order",
+            teamName,
+            headcount,
+            budgetPerHeadCents: budgetPerHead,
+            totalCents: actualTotal,
+            selectedRestaurant,
+            dietary: pending.dietary,
+            allergens: pending.allergens,
+            userItemRequest: pending.userItemRequest,
+            lineItems,
+            reason: `Confirm order from ${selectedRestaurant} — SGD ${(actualTotal / 100).toFixed(2)} for ${headcount} people.`,
+            createdAt: new Date().toISOString(),
+          };
+
+          await setPendingAction(ctx.conversationId, confirmAction);
+
+          const itemsSummary = lineItems.map((li) => `• ${li.person}: ${li.item} — $${(li.priceCents / 100).toFixed(2)}`).join("\n");
+          return {
+            ok: true,
+            tool: "buySomething",
+            summary: `Here's what I'll order from ${selectedRestaurant}:\n\n${itemsSummary}\n\nTotal: SGD ${(actualTotal / 100).toFixed(2)} for ${headcount} people. Shall I confirm and place this order?`,
+            data: { order, lineItems },
+            pendingAction: confirmAction,
+          };
+        }
+
+        // ─── Phase 1: search restaurants, show recommendations ───
+        const excludeList = [
+          ...(ctx.previousRestaurants ?? []),
+          ...(input.excludeRestaurants ?? []),
+        ];
+        const result = await toolRegistry.buySomething.run({
+          teamName: input.teamName,
+          budgetPerHeadCents: input.budgetPerHeadCents ?? 2500,
+          confirm: false,
+          ...(excludeList.length > 0 ? { excludeRestaurants: excludeList } : {}),
+        }, {});
+
         if (result.ok && result.data) {
           const data = result.data as {
-            team: {
-              teamName: string;
-              headcount: number;
-              combinedDietary: string[];
-              combinedAllergens: string[];
-            };
+            team: { teamName: string; headcount: number; combinedDietary: string[]; combinedAllergens: string[] };
             recommendations: FoodOrderEvent["recommendations"];
             budgetPerHeadCents: number;
-            payment?: FoodOrderEvent["payment"];
           };
+
+          const exclusions = [
+            ...(ctx.previousRestaurants ?? []),
+            ...(input.excludeRestaurants ?? []),
+          ].map((n) => n.toLowerCase());
+          if (exclusions.length > 0) {
+            data.recommendations = data.recommendations.filter(
+              (rec) => !exclusions.some((ex) => rec.restaurantName.toLowerCase().includes(ex) || ex.includes(rec.restaurantName.toLowerCase())),
+            );
+          }
+
           const order: FoodOrderEvent = {
             teamName: data.team.teamName,
             headcount: data.team.headcount,
@@ -1081,14 +1492,42 @@ function buildPaymentsTools(ctx: SharedContext) {
             allergens: data.team.combinedAllergens,
             recommendations: data.recommendations,
             budgetPerHeadCents: data.budgetPerHeadCents,
-            payment: data.payment,
           };
-          const event = { type: "food_order" as const, order };
-          ctx.events.push(event);
-          await persistToolCard(ctx.conversationId, "buySomething", "Food order", ctx.nextOrderRef, {
+
+          ctx.send("agent_event", { type: "food_order", order });
+          const sentEvent = { type: "food_order" as const, order, _sent: true };
+          ctx.events.push(sentEvent as typeof sentEvent & { _sent: boolean });
+          await persistToolCard(ctx.conversationId, "buySomething", "Restaurant recommendations", ctx.nextOrderRef, {
             foodOrder: order,
           });
+
+          const totalCents = data.budgetPerHeadCents * data.team.headcount;
+          const pendingFoodAction: PendingAction = {
+            actionId: `${ctx.conversationId}-pending-food-${Date.now()}`,
+            type: "food_order",
+            phase: "pick_restaurant",
+            teamName: data.team.teamName,
+            headcount: data.team.headcount,
+            budgetPerHeadCents: data.budgetPerHeadCents,
+            totalCents,
+            dietary: data.team.combinedDietary,
+            allergens: data.team.combinedAllergens,
+            reason: `Pick a restaurant for ${data.team.teamName} team lunch (${data.team.headcount} people).`,
+            createdAt: new Date().toISOString(),
+          };
+
+          await setPendingAction(ctx.conversationId, pendingFoodAction);
+
+          const recNames = data.recommendations.map((r) => r.restaurantName).join(", ");
+          return {
+            ok: true,
+            tool: "buySomething",
+            summary: `Here are ${data.recommendations.length} restaurant options for the ${data.team.teamName} team (${data.team.headcount} people): ${recNames}. Which restaurant would you like to order from?`,
+            data: result.data,
+            pendingAction: pendingFoodAction,
+          };
         }
+
         return result;
       },
     }),
@@ -1474,16 +1913,34 @@ function formatValue(value: unknown) {
 async function buildModelMessages(conversationId: string): Promise<ModelMessage[]> {
   const persistedMessages = await MessageModel.find({
     conversationId,
-    role: { $in: ["user", "assistant"] },
+    role: { $in: ["user", "assistant", "tool"] },
   })
     .sort({ order: 1 })
-    .limit(18)
+    .limit(30)
     .lean();
 
-  return persistedMessages.map((message) => ({
-    role: message.role as "user" | "assistant",
-    content: message.content,
-  }));
+  const messages: ModelMessage[] = [];
+
+  for (const message of persistedMessages) {
+    if (message.role === "user" || message.role === "assistant") {
+      messages.push({ role: message.role, content: message.content });
+    } else if (message.role === "tool" && message.toolData) {
+      const toolData = message.toolData as { state?: string; output?: Record<string, unknown> };
+      if (toolData.state === "finished" && toolData.output) {
+        const output = toolData.output;
+        const summary = output.summary ?? output.message ?? output.text;
+        if (summary) {
+          messages.push({
+            role: "assistant",
+            content: `[Tool result — ${message.toolName}]: ${String(summary).slice(0, 400)}`,
+          });
+        }
+      }
+    }
+  }
+
+  // Keep context window manageable — take the last 20 messages
+  return messages.slice(-20);
 }
 
 function forcedToolChoiceForLatestMessage(
@@ -1502,7 +1959,41 @@ function forcedToolChoiceForLatestMessage(
     return { type: "tool" as const, toolName: "delegateToUpdater" as const };
   }
 
+  if (pendingAction.type === "food_order") {
+    return { type: "tool" as const, toolName: "delegateToPayments" as const };
+  }
+
   return undefined;
+}
+
+function isFoodOrderSelection(message: string, pendingAction: PendingAction | null): boolean {
+  if (pendingAction?.type !== "food_order") return false;
+  const rejection = /\b(no|cancel|stop|nevermind|never mind|don't|nope)\b/i;
+  if (rejection.test(message)) return false;
+  if (isFoodReSearchRequest(message)) return false;
+
+  // "confirm_order" phase requires explicit confirmation of the items
+  if (pendingAction.phase === "confirm_order") {
+    return isApprovalMessage(message);
+  }
+
+  // "confirm_payment" phase requires explicit confirmation before charging
+  if (pendingAction.phase === "confirm_payment") {
+    return isApprovalMessage(message);
+  }
+
+  // "choose_items" phase: user is telling us what they want to order
+  // Any non-rejection response is treated as their item request
+  if (pendingAction.phase === "choose_items") {
+    return true;
+  }
+
+  // "pick_restaurant" phase: any non-rejection response is a restaurant selection
+  return true;
+}
+
+function isFoodReSearchRequest(message: string): boolean {
+  return /\b(others?|different|more|else|another|alternatives|new options|other options|other locations|other restaurants|try again|search again)\b/i.test(message);
 }
 
 function isSlackSendConfirmation(message: string) {
@@ -1597,7 +2088,11 @@ function routerSystemPrompt({
 
 Today is ${gmt8TodayFromNow(Date.now())} GMT+8.
 
-${pendingAction ? `Pending action awaiting approval:\n${JSON.stringify(pendingAction)}\nUser approval: ${approvalGranted ? "yes — delegate to Updater immediately" : "no"}` : "No pending actions."}`;
+${pendingAction?.type === "food_order" && pendingAction.phase === "choose_items" && !approvalGranted
+    ? `Food order in progress: user picked "${pendingAction.selectedRestaurant}" for ${pendingAction.teamName} team (${pendingAction.headcount} people, budget ~$${((pendingAction.budgetPerHeadCents ?? 2500) / 100).toFixed(0)}/person). DO NOT delegate or call any tools. Ask the user what they'd like to order — suggest a few options based on the restaurant type and ask them to pick or tell you what they want.`
+    : pendingAction?.type === "food_order" && pendingAction.phase === "confirm_payment" && !approvalGranted
+    ? `Food order ready for payment: ${pendingAction.teamName} team, ${pendingAction.headcount} people, SGD ${((pendingAction.totalCents ?? 0) / 100).toFixed(2)} from ${pendingAction.selectedRestaurant ?? "the restaurant"}. DO NOT delegate or call any tools. Ask the user to confirm they want to proceed with payment. Be explicit about the total amount that will be charged.`
+    : pendingAction ? `Pending action awaiting approval:\n${JSON.stringify(pendingAction)}\nUser approval: ${approvalGranted ? "yes — delegate to Updater immediately" : "no"}` : "No pending actions."}`;
 }
 
 // ── Error / summary helpers ────────────────────────────────────────────────

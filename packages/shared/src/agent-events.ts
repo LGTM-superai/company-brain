@@ -74,6 +74,15 @@ export type KBDocumentResult = {
   summary?: string;
   tags?: string[];
   downloadUrl?: string;
+  content?: string;
+  contentType?: string;
+};
+
+export type FoodLineItem = {
+  person: string;
+  item: string;
+  priceCents: number;
+  notes?: string;
 };
 
 export type FoodOrderEvent = {
@@ -83,6 +92,7 @@ export type FoodOrderEvent = {
   allergens: string[];
   recommendations: FoodRecommendationEvent[];
   budgetPerHeadCents: number;
+  lineItems?: FoodLineItem[];
   payment?: {
     totalCents: number;
     paymentIntentId: string;

@@ -21,6 +21,8 @@ export type SpecialistOptions = {
   send: (event: string, data: unknown) => void;
   approvalGranted: boolean;
   pendingAction: PendingAction | null;
+  maxSteps?: number;
+  forceToolUse?: boolean;
 };
 
 export async function runSpecialist(options: SpecialistOptions): Promise<SpecialistResult> {
@@ -34,8 +36,15 @@ export async function runSpecialist(options: SpecialistOptions): Promise<Special
         system: systemPrompt,
         messages: [{ role: "user", content: query }],
         tools,
-        stopWhen: stepCountIs(5),
-        maxOutputTokens: 800,
+        ...(options.forceToolUse
+          ? {
+              prepareStep: ({ stepNumber }) => ({
+                toolChoice: stepNumber === 0 ? ("required" as const) : ("auto" as const),
+              }),
+            }
+          : {}),
+        stopWhen: stepCountIs(options.maxSteps ?? 5),
+        maxOutputTokens: 2400,
         onStepFinish: ({ toolCalls, toolResults }) => {
           for (const tc of toolCalls) {
             const toolName = tc.toolName as ToolName;
@@ -51,6 +60,9 @@ export async function runSpecialist(options: SpecialistOptions): Promise<Special
                 tool: tr.toolName as ToolName,
                 result: resultData,
               });
+            } else if (resultData?.pendingAction) {
+              // Food order / staged approval — the card is already sent via agent_event,
+              // so skip the tool_done to avoid a duplicate display
             } else {
               const summary = resultData?.summary ?? resultData?.message ?? "";
               const ok = resultData?.ok !== false;
@@ -78,9 +90,19 @@ export async function runSpecialist(options: SpecialistOptions): Promise<Special
         };
       }
 
+      let finalText = result.text;
+      if (!finalText) {
+        const lastToolResult = result.steps
+          .flatMap((s) => s.toolResults)
+          .reverse()
+          .find((tr) => (tr.output as Record<string, unknown> | undefined)?.summary);
+        const summary = (lastToolResult?.output as Record<string, unknown> | undefined)?.summary;
+        finalText = summary ? String(summary) : "Done.";
+      }
+
       return {
         ok: true,
-        text: result.text || "Done.",
+        text: finalText,
         toolCalls: toolCallNames,
       };
     } catch (error) {

@@ -9,7 +9,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun scripts/dev.ts",
+    "dev": "bun run --cwd apps/web dev",
     "find:bedrock-model": "bun --env-file=.env scripts/find-bedrock-model.ts",
     "notion:mcp": "bun --env-file=.env scripts/start-notion-mcp.ts",
     "notion:verify": "bun --env-file=.env scripts/verify-notion-mcp.ts",

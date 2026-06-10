@@ -74,6 +74,7 @@ const MessageSchema = new Schema(
     exaNews: { type: [Schema.Types.Mixed], default: undefined },
     budgetAllocations: { type: [Schema.Types.Mixed], default: undefined },
     foodOrder: { type: Schema.Types.Mixed, default: undefined },
+    kbDocuments: { type: [Schema.Types.Mixed], default: undefined },
   },
   { timestamps: true },
 );

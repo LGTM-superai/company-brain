@@ -9,6 +9,7 @@ export type ToolName =
   | "queryExa"
   | "queryRepos"
   | "queryKnowledgeBase"
+  | "queryTeamDietary"
   | "makePayment"
   | "buySomething";
 

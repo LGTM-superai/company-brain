@@ -51,23 +51,78 @@ export async function searchDocuments(opts: {
   await connectMongo();
 
   const allowedLevels = getAccessLevels(opts.username);
-  const filter: Record<string, unknown> = {
+  const limit = opts.limit ?? 10;
+
+  const baseFilter: Record<string, unknown> = {
     sensitivity: { $in: allowedLevels },
   };
+  if (opts.domain) baseFilter.domain = opts.domain;
+  if (opts.tags?.length) baseFilter.tags = { $in: opts.tags };
 
-  if (opts.domain) filter.domain = opts.domain;
-  if (opts.tags?.length) filter.tags = { $in: opts.tags };
+  let docs: any[] = [];
+
   if (opts.query) {
-    filter.$or = [
-      { title: { $regex: opts.query, $options: "i" } },
-      { summary: { $regex: opts.query, $options: "i" } },
-      { tags: { $regex: opts.query, $options: "i" } },
-    ];
+    const words = opts.query.trim().split(/\s+/).filter((w) => w.length >= 2);
+
+    if (words.length > 0) {
+      const wordPatterns = words.map((word) => {
+        const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return {
+          $or: [
+            { title: { $regex: escaped, $options: "i" } },
+            { summary: { $regex: escaped, $options: "i" } },
+            { tags: { $regex: escaped, $options: "i" } },
+            { key: { $regex: escaped, $options: "i" } },
+          ],
+        };
+      });
+
+      // Try strict match first (all words must appear)
+      const strictFilter = { ...baseFilter, $and: wordPatterns };
+      docs = await KBDocumentModel.find(strictFilter).limit(limit).lean();
+
+      // Fall back to fuzzy: any word matches, ranked by match count
+      if (docs.length === 0) {
+        const fuzzyFilter = { ...baseFilter, $or: wordPatterns.map((p) => p.$or).flat() };
+        const candidates = await KBDocumentModel.find(fuzzyFilter).limit(limit * 3).lean();
+
+        docs = rankByRelevance(candidates, words).slice(0, limit);
+      }
+
+      // Still nothing — try prefix matching (e.g. "dietary" matches "diet")
+      if (docs.length === 0) {
+        const prefixes = words
+          .filter((w) => w.length >= 4)
+          .map((w) => w.slice(0, Math.max(4, Math.ceil(w.length * 0.6))));
+
+        if (prefixes.length > 0) {
+          const prefixPatterns = prefixes.map((p) => {
+            const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            return [
+              { title: { $regex: escaped, $options: "i" } },
+              { summary: { $regex: escaped, $options: "i" } },
+              { tags: { $regex: escaped, $options: "i" } },
+              { key: { $regex: escaped, $options: "i" } },
+            ];
+          }).flat();
+
+          const prefixFilter = { ...baseFilter, $or: prefixPatterns };
+          const candidates = await KBDocumentModel.find(prefixFilter).limit(limit * 3).lean();
+          docs = rankByRelevance(candidates, words).slice(0, limit);
+        }
+      }
+    }
+  } else {
+    docs = await KBDocumentModel.find(baseFilter).limit(limit).lean();
   }
 
-  const docs = await KBDocumentModel.find(filter)
-    .limit(opts.limit ?? 10)
-    .lean();
+  // If no results from DB, try to discover unindexed S3 objects and index them
+  if (docs.length === 0 && opts.query) {
+    const discovered = await discoverAndIndexS3Objects(opts.query, allowedLevels);
+    if (discovered > 0) {
+      docs = await KBDocumentModel.find(baseFilter).limit(limit).lean();
+    }
+  }
 
   return {
     ok: true,
@@ -83,10 +138,39 @@ export async function searchDocuments(opts: {
         summary: doc.summary,
         owner: doc.owner,
         team: doc.team,
+        contentType: doc.contentType,
         downloadUrl: `/api/kb/download/${encodeURIComponent(doc.key)}`,
       })),
     },
   };
+}
+
+function rankByRelevance(docs: any[], queryWords: string[]): any[] {
+  const scored = docs.map((doc) => {
+    let score = 0;
+    const searchable = [doc.title, doc.summary, doc.key, ...(doc.tags ?? [])]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    for (const word of queryWords) {
+      const lower = word.toLowerCase();
+      if (searchable.includes(lower)) {
+        score += 2;
+        if (doc.title?.toLowerCase().includes(lower)) score += 3;
+      } else {
+        const prefix = lower.slice(0, Math.max(4, Math.ceil(lower.length * 0.6)));
+        if (searchable.includes(prefix)) score += 1;
+      }
+    }
+
+    return { doc, score };
+  });
+
+  return scored
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((s) => s.doc);
 }
 
 export async function fetchDocumentContent(key: string, username?: string) {
@@ -134,6 +218,91 @@ export async function fetchDocumentContent(key: string, username?: string) {
       tool: "queryKnowledgeBase",
       summary: `Failed to fetch from S3: ${err instanceof Error ? err.message : "Unknown error"}`,
     };
+  }
+}
+
+async function discoverAndIndexS3Objects(query: string, allowedLevels: string[]): Promise<number> {
+  try {
+    const s3 = getS3();
+    const response = await s3.send(new ListObjectsV2Command({
+      Bucket: getBucket(),
+      MaxKeys: 200,
+    }));
+
+    const objects = response.Contents ?? [];
+    if (objects.length === 0) return 0;
+
+    // Find objects not yet indexed in MongoDB
+    const allKeys = objects.map((o) => o.Key).filter(Boolean) as string[];
+    const existingDocs = await KBDocumentModel.find({ s3Key: { $in: allKeys } }).select("s3Key").lean();
+    const indexedKeys = new Set(existingDocs.map((d) => d.s3Key));
+    const unindexed = objects.filter((o) => o.Key && !indexedKeys.has(o.Key));
+
+    if (unindexed.length === 0) return 0;
+
+    // Index untracked S3 objects by inferring metadata from the key
+    const words = query.toLowerCase().split(/\s+/).filter((w) => w.length >= 2);
+    const prefixes = words
+      .filter((w) => w.length >= 4)
+      .map((w) => w.slice(0, Math.max(4, Math.ceil(w.length * 0.6))));
+    let indexed = 0;
+
+    for (const obj of unindexed) {
+      const s3Key = obj.Key!;
+      const filename = s3Key.split("/").pop() ?? s3Key;
+      const keyLower = s3Key.toLowerCase();
+
+      // Match if any word or prefix appears in the key
+      const relevant =
+        words.some((w) => keyLower.includes(w)) ||
+        prefixes.some((p) => keyLower.includes(p));
+      if (!relevant) continue;
+
+      // Infer metadata from path structure: md/{sensitivity}/{domain}/filename or md/{sensitivity}/filename
+      const parts = s3Key.split("/");
+      let sensitivity = "internal";
+      let domain = "general";
+
+      if (parts[0] === "md" && parts.length >= 3) {
+        sensitivity = parts[1] ?? "internal";
+        if (parts.length >= 4) {
+          domain = parts[2] ?? "general";
+        }
+      }
+
+      if (!allowedLevels.includes(sensitivity)) continue;
+
+      const title = filename
+        .replace(/\.[^.]+$/, "")
+        .replace(/[-_]+/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+
+      const docKey = s3Key.replace(/\.[^.]+$/, "").replace(/^md\/[^/]+\//, "");
+
+      await KBDocumentModel.findOneAndUpdate(
+        { s3Key },
+        {
+          $setOnInsert: {
+            key: docKey,
+            title,
+            domain,
+            sensitivity,
+            tags: words,
+            summary: `Auto-indexed from S3: ${s3Key}`,
+            s3Bucket: getBucket(),
+            s3Key,
+            contentType: filename.endsWith(".md") ? "text/markdown" : "application/octet-stream",
+            sizeBytes: obj.Size ?? 0,
+          },
+        },
+        { upsert: true },
+      );
+      indexed++;
+    }
+
+    return indexed;
+  } catch {
+    return 0;
   }
 }
 

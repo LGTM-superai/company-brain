@@ -139,7 +139,7 @@ export function getAllTeams(): string[] {
   return Object.keys(TEAM_DATA);
 }
 
-export function buildSearchQuery(profile: TeamProfile, budgetPerHead?: number): string {
+export function buildSearchQuery(profile: TeamProfile, budgetPerHead?: number, excludeRestaurants?: string[]): string {
   const dietaryStr = profile.combinedDietary.length
     ? `accommodates ${profile.combinedDietary.join(", ")} diets`
     : "";
@@ -148,6 +148,9 @@ export function buildSearchQuery(profile: TeamProfile, budgetPerHead?: number): 
     : "";
   const cuisineStr = profile.preferredCuisines.slice(0, 3).join(", ");
   const budgetStr = budgetPerHead ? `under $${(budgetPerHead / 100).toFixed(0)} per person` : "";
+  const excludeStr = excludeRestaurants?.length
+    ? `NOT ${excludeRestaurants.join(", ")}`
+    : "";
 
   return [
     `restaurant recommendations for team lunch ${profile.headcount} people Singapore`,
@@ -155,6 +158,7 @@ export function buildSearchQuery(profile: TeamProfile, budgetPerHead?: number): 
     allergenStr,
     cuisineStr ? `cuisine preferences: ${cuisineStr}` : "",
     budgetStr,
+    excludeStr,
   ]
     .filter(Boolean)
     .join(", ");

@@ -1,15 +1,7 @@
-type AccessLevel = "public" | "internal" | "confidential" | "restricted";
+import { Client } from "@notionhq/client";
+import { getEnv } from "./env";
 
-type KBDocument = {
-  id: string;
-  title: string;
-  domain: string;
-  sensitivity: AccessLevel;
-  content: string;
-  summary: string;
-  owner?: string;
-  team?: string;
-};
+type AccessLevel = "public" | "internal" | "confidential" | "restricted";
 
 const ROLE_ACCESS: Record<string, AccessLevel[]> = {
   admin: ["public", "internal", "confidential", "restricted"],
@@ -21,218 +13,218 @@ const ROLE_ACCESS: Record<string, AccessLevel[]> = {
   intern: ["public"],
 };
 
-const SAMPLE_KB: KBDocument[] = [
-  {
-    id: "company-overview",
-    title: "Company Overview — Harbor Bean Cafe",
-    domain: "general",
-    sensitivity: "public",
-    summary: "Harbor Bean is a specialty coffee chain in Singapore focused on third-wave coffee and community spaces.",
-    content: `# Harbor Bean Cafe — Company Overview
+const USER_ROLES: Record<string, string> = {
+  edrick: "lead developer",
+  laksh: "design lead",
+  darren: "coder agent owner",
+  carlos: "pm/ops",
+  admin: "admin",
+};
 
-Harbor Bean is a specialty coffee chain based in Singapore, founded in 2023. We operate 4 cafes across the CBD, Tiong Bahru, Holland Village, and Jurong East.
-
-**Mission:** Make specialty coffee accessible to everyone in Singapore.
-
-**Team size:** 45 (20 baristas, 10 kitchen, 8 tech, 4 product, 3 design)
-
-**Tech stack:** Next.js, AWS, Vercel, Notion for project management, Slack for communication.
-
-**Current sprint:** Harbor Bean landing page redesign (Project: Harbor Bean Cafe Website).`,
-  },
-  {
-    id: "architecture",
-    title: "System Architecture",
-    domain: "engineering",
-    sensitivity: "internal",
-    summary: "Monorepo architecture with Next.js frontend, AWS backend, and multi-agent AI system.",
-    content: `# System Architecture
-
-## Stack
-- Frontend: Next.js on Vercel
-- Backend: AWS (DocumentDB, S3, Bedrock)
-- AI: Multi-agent system with Vercel AI SDK
-- Integrations: Notion, Slack, Exa, Stripe, GitHub
-
-## Agent Architecture
-- Router agent delegates to specialists (Searcher, Updater, Coder, Payments Manager)
-- Each specialist has scoped tools and prompts
-- All mutations require human approval
-- Audit trail via #company-brain-actions Slack channel
-
-## Data Flow
-User → Router → Specialist → Tool (Notion/Slack/Exa/Stripe/GitHub) → Response → Audit`,
-  },
-  {
-    id: "sprint-2026-06",
-    title: "Sprint June 2026 — Harbor Bean Landing Page",
-    domain: "product",
-    sensitivity: "internal",
-    summary: "Current sprint focused on landing page redesign with Google Maps embed, responsive layout, and reservation system.",
-    content: `# Sprint June 2026: Harbor Bean Cafe Website
-
-**Goal:** Ship the Harbor Bean landing page with maps, menu, and reservation flow.
-
-**Key tickets:**
-- HB-101: Add reservation URL and CTA button (blocked on client input)
-- HB-102: Menu page with dietary filters
-- HB-103: Mobile responsive layout
-- HB-204: Google Maps iframe embed (technical blocker — aspect-ratio/overflow on mobile)
-- HB-205: Reservation confirmation email
-
-**Team assignments:** See Notion board for current assignees and status.
-**Deadline:** June 20, 2026`,
-  },
-  {
-    id: "billing-api",
-    title: "Billing API Documentation",
-    domain: "engineering",
-    sensitivity: "internal",
-    summary: "Internal billing API for subscription management and payment processing via Stripe.",
-    content: `# Billing API
-
-## Endpoints
-- POST /api/billing/subscribe — Create new subscription
-- POST /api/billing/charge — One-time charge (used by food ordering)
-- GET /api/billing/usage — Current period usage
-- POST /api/billing/budget — Allocate project budget (creates Stripe Issuing card)
-
-## Integration
-Uses Stripe in test mode (sk_test_*). Virtual cards are created per project with spending limits.
-
-## Access
-Only admin and PM roles can view billing. Engineers can trigger charges through the agent with approval.`,
-  },
-  {
-    id: "fy26-budget",
-    title: "FY26 Budget Allocation",
-    domain: "business",
-    sensitivity: "confidential",
-    summary: "Annual budget breakdown including engineering costs, marketing spend, and team expenses.",
-    content: `# FY26 Budget — Harbor Bean
-
-**Total annual budget:** SGD 2.4M
-
-## Breakdown
-- Engineering & Infrastructure: SGD 800K (33%)
-- Marketing & Events: SGD 400K (17%)
-- Team food & activities: SGD 120K (5%)
-- Coffee supplies & equipment: SGD 600K (25%)
-- Rent & operations: SGD 480K (20%)
-
-## Team meal budget
-- Weekly team lunch: SGD 25/person
-- Monthly team dinner: SGD 50/person
-- Quarterly offsite: SGD 200/person
-
-**Approval required for:** expenses over SGD 500/person, unbudgeted categories.`,
-  },
-  {
-    id: "maya-krishnan",
-    title: "Maya Krishnan — Employee Profile",
-    domain: "people",
-    sensitivity: "restricted",
-    summary: "Personal details and dietary preferences for Maya Krishnan, Senior Backend Engineer.",
-    content: `# Maya Krishnan — Employee Profile
-
-**Role:** Senior Backend Engineer
-**Team:** Tech
-**Email:** maya@company.com
-
-## Dietary Restrictions
-- Vegan, gluten-free
-- Allergens: peanuts, tree nuts
-- Cuisine preferences: Healthy, South Indian
-- Dislikes: red meat, heavy fried food
-
-## Notes
-Grew up in a vegetarian Tamil household in Bangalore. Became vegan in university. Serious nut allergy — reads every label.`,
-  },
-];
-
-function getUserAccessLevel(username?: string): AccessLevel[] {
+function getUserAccessLevels(username?: string): AccessLevel[] {
   if (!username) return ["public"];
-
-  const userRoles: Record<string, string> = {
-    edrick: "lead developer",
-    laksh: "design lead",
-    darren: "coder agent owner",
-    carlos: "pm/ops",
-    admin: "admin",
-  };
-
-  const role = userRoles[username.toLowerCase()] ?? "engineer";
+  const role = USER_ROLES[username.toLowerCase()] ?? "engineer";
   return ROLE_ACCESS[role] ?? ["public"];
 }
 
-export function queryKnowledgeBase(
-  query: string,
-  domain?: string,
-  username?: string,
-) {
-  const allowedLevels = getUserAccessLevel(username);
-  const queryLower = query.toLowerCase();
+let _notion: Client | null = null;
 
-  const matches = SAMPLE_KB.filter((doc) => {
-    if (domain && doc.domain !== domain) return false;
+function getNotion(): Client | null {
+  if (_notion) return _notion;
+  const token = getEnv("NOTION_TOKEN") ?? getEnv("NOTION_API_KEY");
+  if (!token) return null;
+  _notion = new Client({ auth: token });
+  return _notion;
+}
 
-    const matchesQuery =
-      doc.title.toLowerCase().includes(queryLower) ||
-      doc.summary.toLowerCase().includes(queryLower) ||
-      doc.content.toLowerCase().includes(queryLower) ||
-      doc.domain.includes(queryLower);
+export type NotionKBDocument = {
+  id: string;
+  title: string;
+  url: string;
+  domain?: string;
+  sensitivity: AccessLevel;
+  tags: string[];
+  summary?: string;
+  source: "notion";
+};
 
-    return matchesQuery;
-  });
-
-  const results = matches.map((doc) => {
-    const hasAccess = allowedLevels.includes(doc.sensitivity);
-
-    if (!hasAccess) {
-      return {
-        id: doc.id,
-        title: doc.title,
-        domain: doc.domain,
-        sensitivity: doc.sensitivity,
-        accessDenied: true,
-        message: `Access denied. "${doc.title}" requires ${doc.sensitivity}-level access. Your role (${username ?? "anonymous"}) does not have permission. Contact your admin for access.`,
-      };
-    }
-
+export async function searchNotionKB(opts: {
+  query?: string;
+  domain?: string;
+  tags?: string[];
+  username?: string;
+  limit?: number;
+}): Promise<{
+  ok: true;
+  tool: "queryKnowledgeBase";
+  source: "notion";
+  summary: string;
+  data: { documents: NotionKBDocument[] };
+  accessDenied: NotionKBDocument[];
+}> {
+  const notion = getNotion();
+  if (!notion) {
     return {
-      id: doc.id,
-      title: doc.title,
-      domain: doc.domain,
-      sensitivity: doc.sensitivity,
-      accessDenied: false,
-      summary: doc.summary,
-      owner: doc.owner,
-      team: doc.team,
-      downloadUrl: `/api/kb/download/${encodeURIComponent(doc.id)}`,
-    };
-  });
-
-  if (results.length === 0) {
-    return {
-      ok: true as const,
+      ok: true,
       tool: "queryKnowledgeBase",
-      query,
-      results: [],
-      message: `No documents found matching "${query}"${domain ? ` in domain "${domain}"` : ""}.`,
+      source: "notion",
+      summary: "Notion not configured (NOTION_TOKEN missing). Skipped.",
+      data: { documents: [] },
+      accessDenied: [],
     };
   }
 
-  const denied = results.filter((r) => r.accessDenied);
-  const accessible = results.filter((r) => !r.accessDenied);
+  const allowedLevels = getUserAccessLevels(opts.username);
+  const limit = opts.limit ?? 10;
 
-  return {
-    ok: true as const,
-    tool: "queryKnowledgeBase",
-    query,
-    results: accessible,
-    accessDenied: denied,
-    message: accessible.length
-      ? `Found ${accessible.length} document(s).${denied.length ? ` ${denied.length} document(s) require higher access.` : ""}`
-      : `All ${denied.length} matching document(s) require higher access than your current role.`,
-  };
+  try {
+    const searchRes = await notion.search({
+      query: opts.query ?? "",
+      page_size: Math.min(limit * 2, 50),
+      filter: { property: "object", value: "page" },
+    });
+
+    const documents: NotionKBDocument[] = [];
+    const accessDenied: NotionKBDocument[] = [];
+
+    for (const page of searchRes.results) {
+      if (page.object !== "page" || !("properties" in page)) continue;
+
+      const props = (page as any).properties ?? {};
+      let title = "Untitled";
+      const tags: string[] = [];
+      let domain: string | undefined;
+      let sensitivity: AccessLevel = "internal";
+
+      for (const [key, prop] of Object.entries(props)) {
+        const p = prop as any;
+        if (p.type === "title") {
+          title = p.title?.map((t: any) => t.plain_text).join("") || "Untitled";
+        }
+        if (p.type === "multi_select") {
+          for (const option of p.multi_select ?? []) {
+            if (option.name) tags.push(option.name);
+          }
+        }
+        if (p.type === "select" && p.select?.name) {
+          const val = p.select.name.toLowerCase();
+          if (key.toLowerCase().includes("domain") || key.toLowerCase().includes("category")) {
+            domain = val;
+          } else if (key.toLowerCase().includes("sensitivity") || key.toLowerCase().includes("access")) {
+            if (["public", "internal", "confidential", "restricted"].includes(val)) {
+              sensitivity = val as AccessLevel;
+            }
+          } else {
+            tags.push(p.select.name);
+          }
+        }
+      }
+
+      if (opts.domain && domain && domain !== opts.domain) continue;
+      if (opts.tags?.length && !opts.tags.some((t) => tags.includes(t))) continue;
+
+      const doc: NotionKBDocument = {
+        id: page.id,
+        title,
+        url: (page as any).url ?? `https://notion.so/${page.id.replace(/-/g, "")}`,
+        domain,
+        sensitivity,
+        tags,
+        source: "notion",
+      };
+
+      if (!allowedLevels.includes(sensitivity)) {
+        accessDenied.push(doc);
+      } else {
+        documents.push(doc);
+      }
+
+      if (documents.length >= limit) break;
+    }
+
+    return {
+      ok: true,
+      tool: "queryKnowledgeBase",
+      source: "notion",
+      summary: `Found ${documents.length} Notion page(s)${opts.query ? ` matching "${opts.query}"` : ""}.${accessDenied.length ? ` ${accessDenied.length} denied.` : ""}`,
+      data: { documents },
+      accessDenied,
+    };
+  } catch (err) {
+    return {
+      ok: true,
+      tool: "queryKnowledgeBase",
+      source: "notion",
+      summary: `Notion search failed: ${err instanceof Error ? err.message : "Unknown error"}`,
+      data: { documents: [] },
+      accessDenied: [],
+    };
+  }
+}
+
+export async function fetchNotionPageContent(pageId: string, username?: string) {
+  const notion = getNotion();
+  if (!notion) {
+    return { ok: false as const, tool: "queryKnowledgeBase", summary: "Notion not configured." };
+  }
+
+  try {
+    const page = await notion.pages.retrieve({ page_id: pageId });
+    const props = (page as any).properties ?? {};
+    let title = "Untitled";
+    let sensitivity: AccessLevel = "internal";
+
+    for (const [key, prop] of Object.entries(props)) {
+      const p = prop as any;
+      if (p.type === "title") {
+        title = p.title?.map((t: any) => t.plain_text).join("") || "Untitled";
+      }
+      if (p.type === "select" && p.select?.name) {
+        const val = p.select.name.toLowerCase();
+        if ((key.toLowerCase().includes("sensitivity") || key.toLowerCase().includes("access")) &&
+            ["public", "internal", "confidential", "restricted"].includes(val)) {
+          sensitivity = val as AccessLevel;
+        }
+      }
+    }
+
+    const allowedLevels = getUserAccessLevels(username);
+    if (!allowedLevels.includes(sensitivity)) {
+      return {
+        ok: false as const,
+        tool: "queryKnowledgeBase",
+        summary: `Access denied. "${title}" requires ${sensitivity}-level access.`,
+      };
+    }
+
+    const blocks = await notion.blocks.children.list({ block_id: pageId, page_size: 100 });
+    const content = blocks.results
+      .map((block: any) => {
+        const type = block.type;
+        const data = block[type];
+        if (!data?.rich_text) return "";
+        return data.rich_text.map((t: any) => t.plain_text).join("");
+      })
+      .filter(Boolean)
+      .join("\n");
+
+    return {
+      ok: true as const,
+      tool: "queryKnowledgeBase",
+      summary: `Retrieved "${title}" from Notion.`,
+      data: {
+        id: pageId,
+        title,
+        sensitivity,
+        content: content.slice(0, 8000),
+        source: "notion" as const,
+      },
+    };
+  } catch (err) {
+    return {
+      ok: false as const,
+      tool: "queryKnowledgeBase",
+      summary: `Failed to fetch Notion page: ${err instanceof Error ? err.message : "Unknown error"}`,
+    };
+  }
 }

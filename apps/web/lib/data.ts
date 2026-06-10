@@ -29,6 +29,13 @@ export type FoodRecommendation = {
   estimatedCostPerHead: string;
 };
 
+export type FoodLineItem = {
+  person: string;
+  item: string;
+  priceCents: number;
+  notes?: string;
+};
+
 export type FoodOrder = {
   teamName: string;
   headcount: number;
@@ -36,6 +43,7 @@ export type FoodOrder = {
   allergens: string[];
   recommendations: FoodRecommendation[];
   budgetPerHeadCents: number;
+  lineItems?: FoodLineItem[];
   payment?: {
     totalCents: number;
     paymentIntentId: string;
@@ -148,7 +156,9 @@ export async function getDashboardData(): Promise<DashboardData> {
       ConversationModel.find().sort({ updatedAt: -1, order: 1 }).lean(),
       AgentModel.find().sort({ agentId: 1 }).lean(),
       CompanyUserModel.find().sort({ userId: 1 }).lean(),
-      KnowledgeNodeModel.find().sort({ nodeId: 1 }).lean(),
+      KnowledgeNodeModel.find({
+        label: { $not: /\b(slack|exa|github|stripe|webhook)\b/i },
+      }).sort({ nodeId: 1 }).lean(),
     ]);
 
     const activeConversation = conversations[0];
@@ -194,6 +204,7 @@ export async function getDashboardData(): Promise<DashboardData> {
             exaNews: message.exaNews,
             budgetAllocations: message.budgetAllocations,
             foodOrder: message.foodOrder,
+            kbDocuments: message.kbDocuments,
           }),
         ),
       ),

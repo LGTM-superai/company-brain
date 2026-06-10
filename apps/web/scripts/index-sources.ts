@@ -117,6 +117,18 @@ async function extractNotionTags(): Promise<Map<string, { tags: string[]; path: 
   return docTags;
 }
 
+const EXCLUDED_TAG_PATTERNS = [
+  /\bslack\b/i,
+  /\bexa\b/i,
+  /\bgithub\b/i,
+  /\bstripe\b/i,
+  /\bwebhook\b/i,
+];
+
+function isExcludedTag(tag: string): boolean {
+  return EXCLUDED_TAG_PATTERNS.some((pattern) => pattern.test(tag));
+}
+
 function buildTagGraph(
   s3Docs: Map<string, { tags: string[]; path: string }>,
   notionDocs: Map<string, { tags: string[]; path: string; title?: string }>,
@@ -143,18 +155,18 @@ function buildTagGraph(
     return existing;
   }
 
-  // Process S3 documents
+  // Process S3 documents (exclude tags referencing external services)
   for (const [, doc] of s3Docs) {
-    for (const tag of doc.tags) {
+    const tags = doc.tags.filter((t) => !isExcludedTag(t));
+    for (const tag of tags) {
       const node = ensureTag(tag, "s3");
       node.metadata.documents.push({ path: doc.path, source: "s3" });
       node.metadata.weight++;
     }
-    // Create co-occurrence edges
-    for (let i = 0; i < doc.tags.length; i++) {
-      for (let j = i + 1; j < doc.tags.length; j++) {
-        const a = tagToNodeId(doc.tags[i]);
-        const b = tagToNodeId(doc.tags[j]);
+    for (let i = 0; i < tags.length; i++) {
+      for (let j = i + 1; j < tags.length; j++) {
+        const a = tagToNodeId(tags[i]);
+        const b = tagToNodeId(tags[j]);
         const nodeA = tagMap.get(a)!;
         const nodeB = tagMap.get(b)!;
         if (!nodeA.links.includes(b)) nodeA.links.push(b);
@@ -163,18 +175,18 @@ function buildTagGraph(
     }
   }
 
-  // Process Notion documents
+  // Process Notion documents (exclude tags referencing external services)
   for (const [, doc] of notionDocs) {
-    for (const tag of doc.tags) {
+    const tags = doc.tags.filter((t) => !isExcludedTag(t));
+    for (const tag of tags) {
       const node = ensureTag(tag, "notion");
       node.metadata.documents.push({ path: doc.path, source: "notion", title: doc.title });
       node.metadata.weight++;
     }
-    // Create co-occurrence edges
-    for (let i = 0; i < doc.tags.length; i++) {
-      for (let j = i + 1; j < doc.tags.length; j++) {
-        const a = tagToNodeId(doc.tags[i]);
-        const b = tagToNodeId(doc.tags[j]);
+    for (let i = 0; i < tags.length; i++) {
+      for (let j = i + 1; j < tags.length; j++) {
+        const a = tagToNodeId(tags[i]);
+        const b = tagToNodeId(tags[j]);
         const nodeA = tagMap.get(a)!;
         const nodeB = tagMap.get(b)!;
         if (!nodeA.links.includes(b)) nodeA.links.push(b);
