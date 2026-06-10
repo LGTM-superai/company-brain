@@ -47,6 +47,12 @@ type McpLatestAgentNoteInput = {
   note: string;
 };
 
+type McpAppendTicketNoteInput = {
+  ticket: string;
+  heading?: string;
+  note: string;
+};
+
 export type McpTicketFieldValues = {
   name?: string;
   status?: string;
@@ -352,6 +358,55 @@ export async function updateMcpLatestAgentNote(input: McpLatestAgentNoteInput) {
       source: "notion-mcp",
       action: "record_latest_agent_note",
       ticket,
+      note: input.note,
+    };
+  });
+}
+
+export async function appendMcpTicketNote(input: McpAppendTicketNoteInput) {
+  return withNotionMcp(async (runtime) => {
+    const ticketResult = await queryMcpNotionTicketsWithRuntime(runtime, {
+      project: HARBOR_BEAN_PROJECT,
+      ticket: input.ticket,
+      includeBody: false,
+    });
+
+    if (ticketResult.tickets.length !== 1) {
+      return {
+        ok: false,
+        source: "notion-mcp",
+        reason: "ticket_lookup_failed",
+        message: `Expected one Notion ticket for "${input.ticket}", found ${ticketResult.tickets.length}.`,
+      };
+    }
+
+    const ticket = ticketResult.tickets[0];
+    const heading = input.heading?.trim() || "Agent fix note";
+
+    await runtime.call("API-patch-block-children", {
+      block_id: ticket.pageId,
+      children: [heading2Block(heading), paragraphBlock(input.note)],
+    });
+
+    const verifyBlocks = await getAllBlockChildren(runtime, ticket.pageId);
+    const body = verifyBlocks.map(blockToMarkdown).filter(Boolean).join("\n");
+
+    if (!body.includes(input.note.slice(0, 80))) {
+      return {
+        ok: false,
+        source: "notion-mcp",
+        reason: "write_verification_failed",
+        message: `Notion append appeared to succeed but verification did not find the note on ${ticket.code}.`,
+        ticket,
+      };
+    }
+
+    return {
+      ok: true,
+      source: "notion-mcp",
+      action: "append_ticket_note",
+      ticket,
+      heading,
       note: input.note,
     };
   });

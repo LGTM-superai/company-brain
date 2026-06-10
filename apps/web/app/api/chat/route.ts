@@ -40,6 +40,7 @@ import {
 } from "../../../lib/exa-runtime";
 import { HARBOR_BEAN_PROJECT } from "../../../lib/notion-runtime";
 import {
+  appendMcpTicketNote,
   queryMcpNotionTickets,
   updateMcpLatestAgentNote,
   updateMcpTicketFields,
@@ -93,9 +94,10 @@ const ticketFieldChangesSchema = z.object({
 });
 
 const updateNotionInputSchema = z.object({
-  action: z.enum(["record_latest_agent_note", "update_ticket_fields", "move_status"]),
+  action: z.enum(["record_latest_agent_note", "append_fix_note", "update_ticket_fields", "move_status"]),
   ticket: z.string(),
   note: z.string().optional(),
+  heading: z.string().optional(),
   changes: ticketFieldChangesSchema.optional(),
   current: ticketFieldChangesSchema.optional(),
   currentStatus: z.string().optional(),
@@ -729,7 +731,7 @@ function buildUpdaterTools(ctx: SharedContext) {
   return {
     updateNotion: tool({
       description:
-        "Update the live Notion sprint board. Can write Latest agent note or update Name, Status, Project, Assignee, Due Date, and Priority.",
+        "Update the live Notion sprint board. Can append a fix note to the bottom of a ticket, write Latest agent note, or update Name, Status, Project, Assignee, Due Date, and Priority.",
       inputSchema: updateNotionInputSchema,
       execute: async (input) => {
         const notionApprovalGranted =
@@ -753,6 +755,29 @@ function buildUpdaterTools(ctx: SharedContext) {
           }
 
           return { ok: false, message: result.message ?? `Failed to write agent note on ${input.ticket}.` };
+        }
+
+        if (input.action === "append_fix_note") {
+          if (!input.note) {
+            return { ok: false, message: "Tool failed: updateNotion (note is required)." };
+          }
+
+          const result = await appendMcpTicketNote({
+            ticket: input.ticket,
+            heading: input.heading ?? "Agent fix note",
+            note: input.note,
+          });
+
+          if (result.ok) {
+            await auditExternalMutation(ctx.conversationId, {
+              system: "Notion",
+              target: input.ticket,
+              action: "Appended fix note to ticket bottom",
+            });
+            return { ok: true, message: `Done. Appended the fix note to the bottom of ${input.ticket}.` };
+          }
+
+          return { ok: false, message: result.message ?? `Failed to append fix note on ${input.ticket}.` };
         }
 
         const request = await buildTicketFieldUpdateRequest(input, ctx.pendingAction, notionApprovalGranted);
