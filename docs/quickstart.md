@@ -44,6 +44,19 @@ Set:
 ```txt
 MONGODB_URL=...
 MONGODB_DB_NAME=company_brain
+AI_MODEL_PROVIDER=bedrock
+BEDROCK_MODEL_ID=...
+AWS_DEFAULT_REGION=...
+AWS_BEARER_TOKEN_BEDROCK=...
+```
+
+`AI_MODEL_PROVIDER=bedrock` forces the Vercel AI SDK runtime to call Amazon Bedrock, even if
+Vercel AI Gateway variables are also present. To test Gateway later, switch:
+
+```txt
+AI_MODEL_PROVIDER=vercel-ai-gateway
+AI_GATEWAY_MODEL=anthropic/claude-sonnet-4.6
+AI_GATEWAY_API_KEY=...
 ```
 
 ## Seed MongoDB
@@ -108,11 +121,11 @@ Implemented:
 - Mongo-backed chat API route
 - Mongo-backed knowledge graph page
 - Mongo-backed users page
+- Vercel AI SDK streaming chat runtime
+- `.env`-selectable Bedrock or Vercel AI Gateway model provider
 
 Not implemented yet:
 
-- real LLM runtime
-- Vercel AI SDK streaming
 - real Notion/Slack/GitHub/Exa API calls
 - real payment execution
 - real approval workflow
