@@ -1,449 +1,282 @@
-import { WebClient } from "@slack/web-api";
-import Exa from "exa-js";
-import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { S3Client, ListObjectsV2Command, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { Client as NotionClient } from "@notionhq/client";
-import { Octokit } from "@octokit/rest";
 import { connectMongo, disconnectMongo } from "../lib/mongodb";
 import { KnowledgeNodeModel } from "../lib/models";
 
-type NodeInput = {
+type TagNode = {
   nodeId: string;
   label: string;
-  type: string;
-  source: string;
+  type: "tag";
+  source: "s3" | "notion" | "both";
   summary: string;
   links: string[];
-  metadata?: Record<string, unknown>;
-  sourceId?: string;
+  metadata: {
+    documents: Array<{
+      path: string;
+      source: "s3" | "notion";
+      title?: string;
+    }>;
+    weight: number;
+  };
 };
 
-const HUB_IDS = ["company-brain", "slack", "github", "exa", "sprint-board", "notion-kb", "s3-store"];
-
-function assignRingPositions(nodes: NodeInput[], radius: number, startAngle = -Math.PI / 2) {
-  if (nodes.length === 0) return;
-  const step = (2 * Math.PI) / nodes.length;
-  nodes.forEach((n, i) => {
-    const angle = startAngle + i * step;
-    (n as any).x = Math.round((50 + radius * Math.cos(angle)) * 100) / 100;
-    (n as any).y = Math.round((50 + radius * Math.sin(angle)) * 100) / 100;
-  });
+function tagToNodeId(tag: string): string {
+  return `tag-${tag.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
 }
 
-async function indexSlack(): Promise<NodeInput[]> {
-  const token = process.env.SLACK_BOT_TOKEN;
-  if (!token) {
-    console.log("  ⏭ SLACK_BOT_TOKEN not set, skipping Slack");
-    return [];
-  }
-
-  const client = new WebClient(token);
-  const nodes: NodeInput[] = [];
-
-  const channelsRes = await client.conversations.list({
-    types: "public_channel",
-    limit: 10,
-    exclude_archived: true,
-  });
-
-  const channels = channelsRes.channels ?? [];
-  console.log(`  Found ${channels.length} Slack channels`);
-
-  for (const ch of channels.slice(0, 8)) {
-    const channelNodeId = `slack-ch-${ch.id}`;
-    nodes.push({
-      nodeId: channelNodeId,
-      label: `#${ch.name}`,
-      type: "channel",
-      source: "slack",
-      summary: ch.purpose?.value || ch.topic?.value || `Slack channel #${ch.name}`,
-      links: ["slack"],
-      sourceId: ch.id,
-      metadata: { name: ch.name, memberCount: ch.num_members },
-    });
-
-    try {
-      const historyRes = await client.conversations.history({
-        channel: ch.id!,
-        limit: 3,
-      });
-
-      for (const msg of (historyRes.messages ?? []).filter((m) => (m.text?.length ?? 0) > 20)) {
-        const msgNodeId = `slack-msg-${ch.id}-${msg.ts}`;
-        const text = msg.text ?? "";
-        nodes.push({
-          nodeId: msgNodeId,
-          label: text.slice(0, 40) + (text.length > 40 ? "…" : ""),
-          type: "message",
-          source: "slack",
-          summary: text.slice(0, 120),
-          links: [channelNodeId],
-          sourceId: msg.ts,
-          metadata: { channel: ch.name, user: msg.user, ts: msg.ts },
-        });
-      }
-    } catch {
-      // May not have access to channel history
-    }
-  }
-
-  return nodes;
-}
-
-async function indexGithub(): Promise<NodeInput[]> {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) {
-    console.log("  ⏭ GITHUB_TOKEN not set, skipping GitHub");
-    return [];
-  }
-
-  const octokit = new Octokit({ auth: token });
-  const nodes: NodeInput[] = [];
-
-  const { data: repos } = await octokit.repos.listForAuthenticatedUser({
-    sort: "updated",
-    per_page: 5,
-  });
-
-  console.log(`  Found ${repos.length} GitHub repos`);
-
-  for (const repo of repos.slice(0, 5)) {
-    const repoNodeId = `gh-repo-${repo.name}`;
-    nodes.push({
-      nodeId: repoNodeId,
-      label: repo.name,
-      type: "repository",
-      source: "github",
-      summary: repo.description || `GitHub repository: ${repo.full_name}`,
-      links: ["github"],
-      sourceId: String(repo.id),
-      metadata: { url: repo.html_url, language: repo.language, stars: repo.stargazers_count },
-    });
-
-    try {
-      const { data: issues } = await octokit.issues.listForRepo({
-        owner: repo.owner.login,
-        repo: repo.name,
-        state: "open",
-        per_page: 3,
-      });
-
-      for (const issue of issues) {
-        const issueNodeId = `gh-issue-${repo.name}-${issue.number}`;
-        nodes.push({
-          nodeId: issueNodeId,
-          label: `#${issue.number} ${issue.title.slice(0, 30)}`,
-          type: issue.pull_request ? "pull-request" : "issue",
-          source: "github",
-          summary: (issue.body ?? issue.title).slice(0, 120),
-          links: [repoNodeId],
-          sourceId: String(issue.id),
-          metadata: { url: issue.html_url, state: issue.state, author: issue.user?.login },
-        });
-      }
-    } catch {
-      // May not have issue access
-    }
-  }
-
-  return nodes;
-}
-
-async function indexExa(): Promise<NodeInput[]> {
-  const key = process.env.EXA_API_KEY;
-  if (!key) {
-    console.log("  ⏭ EXA_API_KEY not set, skipping Exa");
-    return [];
-  }
-
-  const exa = new Exa(key);
-  const nodes: NodeInput[] = [];
-
-  const queries = [
-    "LGTM landing page studio",
-    "cafe landing page design best practices",
-    "high-converting landing pages for restaurants",
-  ];
-
-  for (const query of queries) {
-    try {
-      const results = await exa.search(query, {
-        numResults: 3,
-        type: "neural",
-      });
-
-      console.log(`  Exa "${query.slice(0, 30)}…" → ${results.results.length} results`);
-
-      for (const result of results.results) {
-        const nodeId = `exa-${result.id || Buffer.from(result.url).toString("base64").slice(0, 12)}`;
-        nodes.push({
-          nodeId,
-          label: (result.title ?? result.url).slice(0, 40),
-          type: "web-result",
-          source: "exa",
-          summary: (result.text ?? result.title ?? result.url).slice(0, 120),
-          links: ["exa"],
-          sourceId: result.id,
-          metadata: { url: result.url, title: result.title, publishedDate: result.publishedDate },
-        });
-      }
-    } catch (e: any) {
-      console.log(`  ⚠ Exa query "${query.slice(0, 20)}…" failed: ${e.message}`);
-    }
-  }
-
-  return nodes;
-}
-
-async function indexNotion(): Promise<NodeInput[]> {
-  const token = process.env.NOTION_API_KEY;
-  if (!token) {
-    console.log("  ⏭ NOTION_API_KEY not set, skipping Notion");
-    return [];
-  }
-
-  const notion = new NotionClient({ auth: token });
-  const nodes: NodeInput[] = [];
-
-  try {
-    const searchRes = await notion.search({ page_size: 12 });
-    console.log(`  Found ${searchRes.results.length} Notion pages/databases`);
-
-    for (const item of searchRes.results) {
-      const objType = item.object as string;
-      const isPage = objType === "page";
-      const isDb = objType === "database";
-      if (!isPage && !isDb) continue;
-
-      let title = "Untitled";
-      if (isDb && "title" in item) {
-        title = (item as any).title?.map((t: any) => t.plain_text).join("") || "Untitled DB";
-      } else if (isPage && "properties" in item) {
-        const titleProp = Object.values((item as any).properties).find(
-          (p: any) => p.type === "title",
-        ) as any;
-        title = titleProp?.title?.map((t: any) => t.plain_text).join("") || "Untitled Page";
-      }
-
-      const nodeId = `notion-${item.id.replace(/-/g, "").slice(0, 12)}`;
-      nodes.push({
-        nodeId,
-        label: title.slice(0, 40),
-        type: isDb ? "database" : "page",
-        source: "notion",
-        summary: `Notion ${isDb ? "database" : "page"}: ${title}`,
-        links: ["notion-kb"],
-        sourceId: item.id,
-        metadata: { url: (item as any).url, type: objType },
-      });
-    }
-  } catch (e: any) {
-    console.log(`  ⚠ Notion indexing failed: ${e.message}`);
-  }
-
-  return nodes;
-}
-
-async function indexS3(): Promise<NodeInput[]> {
+async function extractS3Tags(): Promise<Map<string, { tags: string[]; path: string }>> {
   const bucket = process.env.KB_S3_BUCKET;
   const region = process.env.AWS_REGION_NAME || process.env.AWS_DEFAULT_REGION;
   if (!bucket) {
     console.log("  ⏭ KB_S3_BUCKET not set, skipping S3");
-    return [];
+    return new Map();
   }
 
   const s3 = new S3Client({ region: region || "us-east-1" });
-  const nodes: NodeInput[] = [];
-
-  // Ensure an S3 hub node exists
-  nodes.push({
-    nodeId: "s3-store",
-    label: "S3 Storage",
-    type: "storage-source",
-    source: "s3",
-    summary: `AWS S3 bucket: ${bucket}`,
-    links: ["company-brain"],
-  });
+  const docTags = new Map<string, { tags: string[]; path: string }>();
 
   try {
-    const res = await s3.send(new ListObjectsV2Command({ Bucket: bucket, MaxKeys: 20 }));
+    const res = await s3.send(new ListObjectsV2Command({ Bucket: bucket, MaxKeys: 100 }));
     const objects = res.Contents ?? [];
     console.log(`  Found ${objects.length} S3 objects in ${bucket}`);
 
     for (const obj of objects) {
       if (!obj.Key) continue;
-      const fileName = obj.Key.split("/").pop() || obj.Key;
-      const nodeId = `s3-${Buffer.from(obj.Key).toString("base64").slice(0, 16)}`;
-      nodes.push({
-        nodeId,
-        label: fileName.slice(0, 40),
-        type: "document",
-        source: "s3",
-        summary: `S3 object: ${obj.Key} (${formatBytes(obj.Size ?? 0)})`,
-        links: ["s3-store"],
-        sourceId: obj.Key,
-        metadata: { key: obj.Key, size: obj.Size, lastModified: obj.LastModified?.toISOString() },
-      });
+
+      try {
+        const head = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: obj.Key }));
+        const userMeta = head.Metadata ?? {};
+
+        // Tags can come from x-amz-meta-tags (comma-separated) or x-amz-meta-labels
+        const rawTags = userMeta["tags"] || userMeta["labels"] || "";
+        if (!rawTags) continue;
+
+        const tags = rawTags
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean);
+
+        if (tags.length > 0) {
+          docTags.set(obj.Key, { tags, path: obj.Key });
+        }
+      } catch {
+        // Can't read metadata for this object
+      }
     }
   } catch (e: any) {
     console.log(`  ⚠ S3 indexing failed: ${e.message}`);
   }
 
-  return nodes;
+  return docTags;
 }
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+async function extractNotionTags(): Promise<Map<string, { tags: string[]; path: string; title?: string }>> {
+  const token = process.env.NOTION_API_KEY;
+  if (!token) {
+    console.log("  ⏭ NOTION_API_KEY not set, skipping Notion");
+    return new Map();
+  }
+
+  const notion = new NotionClient({ auth: token });
+  const docTags = new Map<string, { tags: string[]; path: string; title?: string }>();
+
+  try {
+    const searchRes = await notion.search({ page_size: 50 });
+    console.log(`  Found ${searchRes.results.length} Notion pages/databases`);
+
+    for (const item of searchRes.results) {
+      if (item.object !== "page" || !("properties" in item)) continue;
+
+      let title = "Untitled";
+      const tags: string[] = [];
+
+      for (const [, prop] of Object.entries((item as any).properties)) {
+        const p = prop as any;
+        if (p.type === "title") {
+          title = p.title?.map((t: any) => t.plain_text).join("") || "Untitled";
+        }
+        // Extract from multi_select and select properties (Notion's tagging system)
+        if (p.type === "multi_select") {
+          for (const option of p.multi_select ?? []) {
+            if (option.name) tags.push(option.name);
+          }
+        }
+        if (p.type === "select" && p.select?.name) {
+          tags.push(p.select.name);
+        }
+      }
+
+      if (tags.length > 0) {
+        docTags.set(item.id, { tags, path: (item as any).url || item.id, title });
+      }
+    }
+  } catch (e: any) {
+    console.log(`  ⚠ Notion indexing failed: ${e.message}`);
+  }
+
+  return docTags;
+}
+
+function buildTagGraph(
+  s3Docs: Map<string, { tags: string[]; path: string }>,
+  notionDocs: Map<string, { tags: string[]; path: string; title?: string }>,
+): TagNode[] {
+  const tagMap = new Map<string, TagNode>();
+
+  function ensureTag(tag: string, source: "s3" | "notion"): TagNode {
+    const nodeId = tagToNodeId(tag);
+    let existing = tagMap.get(nodeId);
+    if (!existing) {
+      existing = {
+        nodeId,
+        label: tag,
+        type: "tag",
+        source,
+        summary: `Tag: ${tag}`,
+        links: [],
+        metadata: { documents: [], weight: 0 },
+      };
+      tagMap.set(nodeId, existing);
+    } else if (existing.source !== source) {
+      existing.source = "both";
+    }
+    return existing;
+  }
+
+  // Process S3 documents
+  for (const [, doc] of s3Docs) {
+    for (const tag of doc.tags) {
+      const node = ensureTag(tag, "s3");
+      node.metadata.documents.push({ path: doc.path, source: "s3" });
+      node.metadata.weight++;
+    }
+    // Create co-occurrence edges
+    for (let i = 0; i < doc.tags.length; i++) {
+      for (let j = i + 1; j < doc.tags.length; j++) {
+        const a = tagToNodeId(doc.tags[i]);
+        const b = tagToNodeId(doc.tags[j]);
+        const nodeA = tagMap.get(a)!;
+        const nodeB = tagMap.get(b)!;
+        if (!nodeA.links.includes(b)) nodeA.links.push(b);
+        if (!nodeB.links.includes(a)) nodeB.links.push(a);
+      }
+    }
+  }
+
+  // Process Notion documents
+  for (const [, doc] of notionDocs) {
+    for (const tag of doc.tags) {
+      const node = ensureTag(tag, "notion");
+      node.metadata.documents.push({ path: doc.path, source: "notion", title: doc.title });
+      node.metadata.weight++;
+    }
+    // Create co-occurrence edges
+    for (let i = 0; i < doc.tags.length; i++) {
+      for (let j = i + 1; j < doc.tags.length; j++) {
+        const a = tagToNodeId(doc.tags[i]);
+        const b = tagToNodeId(doc.tags[j]);
+        const nodeA = tagMap.get(a)!;
+        const nodeB = tagMap.get(b)!;
+        if (!nodeA.links.includes(b)) nodeA.links.push(b);
+        if (!nodeB.links.includes(a)) nodeB.links.push(a);
+      }
+    }
+  }
+
+  return Array.from(tagMap.values());
+}
+
+function layoutForceDirected(nodes: TagNode[]): void {
+  if (nodes.length === 0) return;
+
+  // Initialize positions randomly in a circle
+  const positions = nodes.map((_, i) => {
+    const angle = (2 * Math.PI * i) / nodes.length;
+    const radius = 30 + Math.random() * 10;
+    return { x: 50 + radius * Math.cos(angle), y: 50 + radius * Math.sin(angle) };
+  });
+
+  const nodeIndex = new Map(nodes.map((n, i) => [n.nodeId, i]));
+
+  // Simple force-directed simulation
+  for (let iter = 0; iter < 200; iter++) {
+    const forces = positions.map(() => ({ fx: 0, fy: 0 }));
+
+    // Repulsion between all nodes
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const dx = positions[i].x - positions[j].x;
+        const dy = positions[i].y - positions[j].y;
+        const dist = Math.max(Math.sqrt(dx * dx + dy * dy), 1);
+        const force = 80 / (dist * dist);
+        forces[i].fx += (dx / dist) * force;
+        forces[i].fy += (dy / dist) * force;
+        forces[j].fx -= (dx / dist) * force;
+        forces[j].fy -= (dy / dist) * force;
+      }
+    }
+
+    // Attraction along edges
+    for (const node of nodes) {
+      const i = nodeIndex.get(node.nodeId)!;
+      for (const linkId of node.links) {
+        const j = nodeIndex.get(linkId);
+        if (j === undefined) continue;
+        const dx = positions[j].x - positions[i].x;
+        const dy = positions[j].y - positions[i].y;
+        const dist = Math.max(Math.sqrt(dx * dx + dy * dy), 1);
+        const force = dist * 0.01;
+        forces[i].fx += dx * force;
+        forces[i].fy += dy * force;
+      }
+    }
+
+    // Center gravity
+    for (let i = 0; i < nodes.length; i++) {
+      forces[i].fx += (50 - positions[i].x) * 0.005;
+      forces[i].fy += (50 - positions[i].y) * 0.005;
+    }
+
+    // Apply forces with cooling
+    const cooling = 1 - iter / 200;
+    for (let i = 0; i < nodes.length; i++) {
+      positions[i].x += forces[i].fx * cooling * 0.5;
+      positions[i].y += forces[i].fy * cooling * 0.5;
+      positions[i].x = Math.max(5, Math.min(95, positions[i].x));
+      positions[i].y = Math.max(5, Math.min(95, positions[i].y));
+    }
+  }
+
+  // Apply positions
+  for (let i = 0; i < nodes.length; i++) {
+    (nodes[i] as any).x = Math.round(positions[i].x * 100) / 100;
+    (nodes[i] as any).y = Math.round(positions[i].y * 100) / 100;
+  }
 }
 
 async function main() {
   await connectMongo();
   console.log("Connected to MongoDB\n");
 
-  // Clear all existing knowledge nodes — we rebuild from real sources only
   await KnowledgeNodeModel.deleteMany({});
   console.log("Cleared old knowledge nodes.\n");
 
-  console.log("Indexing Slack...");
-  const slackNodes = await indexSlack();
-  console.log(`  → ${slackNodes.length} nodes\n`);
+  console.log("Extracting S3 tags...");
+  const s3Docs = await extractS3Tags();
+  console.log(`  → ${s3Docs.size} documents with tags\n`);
 
-  console.log("Indexing GitHub...");
-  const githubNodes = await indexGithub();
-  console.log(`  → ${githubNodes.length} nodes\n`);
+  console.log("Extracting Notion tags...");
+  const notionDocs = await extractNotionTags();
+  console.log(`  → ${notionDocs.size} documents with tags\n`);
 
-  console.log("Indexing Exa...");
-  const exaNodes = await indexExa();
-  console.log(`  → ${exaNodes.length} nodes\n`);
+  console.log("Building tag graph...");
+  const tagNodes = buildTagGraph(s3Docs, notionDocs);
+  console.log(`  → ${tagNodes.length} unique tags, ${tagNodes.reduce((sum, n) => sum + n.links.length, 0) / 2} edges\n`);
 
-  console.log("Indexing Notion...");
-  const notionNodes = await indexNotion();
-  console.log(`  → ${notionNodes.length} nodes\n`);
+  console.log("Computing layout...");
+  layoutForceDirected(tagNodes);
 
-  console.log("Indexing S3...");
-  const s3Nodes = await indexS3();
-  console.log(`  → ${s3Nodes.length} nodes\n`);
-
-  // Build hub nodes for each active source
-  const hubs: NodeInput[] = [];
-  hubs.push({
-    nodeId: "company-brain",
-    label: "Company Brain",
-    type: "agent-router",
-    source: "internal",
-    summary: "Central hub routing to all indexed knowledge sources.",
-    links: [],
-  });
-
-  if (slackNodes.length > 0) {
-    hubs.push({
-      nodeId: "hub-slack",
-      label: "Slack",
-      type: "source-hub",
-      source: "slack",
-      summary: `${slackNodes.filter((n) => n.type === "channel").length} channels indexed from Slack workspace.`,
-      links: ["company-brain"],
-    });
-    slackNodes.forEach((n) => {
-      if (n.type === "channel") n.links = [...n.links.filter((l) => l !== "slack"), "hub-slack"];
-    });
-    hubs[0].links.push("hub-slack");
-  }
-
-  if (githubNodes.length > 0) {
-    hubs.push({
-      nodeId: "hub-github",
-      label: "GitHub",
-      type: "source-hub",
-      source: "github",
-      summary: `${githubNodes.filter((n) => n.type === "repository").length} repositories indexed from GitHub.`,
-      links: ["company-brain"],
-    });
-    githubNodes.forEach((n) => {
-      if (n.type === "repository") n.links = [...n.links.filter((l) => l !== "github"), "hub-github"];
-    });
-    hubs[0].links.push("hub-github");
-  }
-
-  if (exaNodes.length > 0) {
-    hubs.push({
-      nodeId: "hub-exa",
-      label: "Exa",
-      type: "source-hub",
-      source: "exa",
-      summary: `${exaNodes.length} web results from Exa search.`,
-      links: ["company-brain"],
-    });
-    exaNodes.forEach((n) => {
-      n.links = [...n.links.filter((l) => l !== "exa"), "hub-exa"];
-    });
-    hubs[0].links.push("hub-exa");
-  }
-
-  if (notionNodes.length > 0) {
-    hubs.push({
-      nodeId: "hub-notion",
-      label: "Notion",
-      type: "source-hub",
-      source: "notion",
-      summary: `${notionNodes.length} pages/databases indexed from Notion.`,
-      links: ["company-brain"],
-    });
-    notionNodes.forEach((n) => {
-      n.links = [...n.links.filter((l) => l !== "notion-kb"), "hub-notion"];
-    });
-    hubs[0].links.push("hub-notion");
-  }
-
-  // Remove the standalone s3-store node from s3Nodes since we create it as a hub
-  const s3DataNodes = s3Nodes.filter((n) => n.nodeId !== "s3-store");
-  if (s3DataNodes.length > 0) {
-    hubs.push({
-      nodeId: "hub-s3",
-      label: "S3 Storage",
-      type: "source-hub",
-      source: "s3",
-      summary: `${s3DataNodes.length} objects indexed from S3.`,
-      links: ["company-brain"],
-    });
-    s3DataNodes.forEach((n) => {
-      n.links = [...n.links.filter((l) => l !== "s3-store"), "hub-s3"];
-    });
-    hubs[0].links.push("hub-s3");
-  }
-
-  // Assign positions
-  // Ring 0: company-brain center
-  (hubs[0] as any).x = 50;
-  (hubs[0] as any).y = 50;
-
-  // Ring 1: source hubs
-  const sourceHubs = hubs.slice(1);
-  assignRingPositions(sourceHubs, 18);
-
-  // Ring 2: mid-level (channels, repos, databases)
-  const ring2 = [
-    ...slackNodes.filter((n) => n.type === "channel"),
-    ...githubNodes.filter((n) => n.type === "repository"),
-    ...notionNodes.filter((n) => n.type === "database"),
-  ];
-  assignRingPositions(ring2, 33);
-
-  // Ring 3: leaf nodes (messages, issues, results, pages, documents)
-  const ring3 = [
-    ...slackNodes.filter((n) => n.type === "message"),
-    ...githubNodes.filter((n) => n.type !== "repository"),
-    ...exaNodes,
-    ...notionNodes.filter((n) => n.type === "page"),
-    ...s3DataNodes,
-  ];
-  assignRingPositions(ring3, 46);
-
-  const allNodes = [...hubs, ...slackNodes, ...githubNodes, ...exaNodes, ...notionNodes, ...s3DataNodes];
-
-  // Insert all nodes
-  for (const node of allNodes) {
+  for (const node of tagNodes) {
     await KnowledgeNodeModel.updateOne(
       { nodeId: node.nodeId },
       {
@@ -458,7 +291,7 @@ async function main() {
     );
   }
 
-  console.log(`Done! Indexed ${allNodes.length} knowledge nodes from real sources.`);
+  console.log(`Done! Indexed ${tagNodes.length} tag nodes.`);
   await disconnectMongo();
 }
 

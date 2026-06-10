@@ -25,6 +25,39 @@ export type DashboardMessage = {
     summary: string;
     publishedDate?: string;
   }>;
+  repoMonitors?: Array<{
+    owner: string;
+    repo: string;
+    monitorId: string;
+    packages: string[];
+    slackChannelId: string;
+    severityThreshold: string;
+    status: string;
+    createdAt: string;
+  }>;
+  exaVerdict?: {
+    verdict: string;
+    confidence: string;
+    evidence_url: string;
+    evidence_title: string;
+    summary: string;
+    recommended_next_step: string;
+  };
+  exaCVE?: {
+    cve_id: string;
+    severity: string;
+    affected_packages: string[];
+    summary: string;
+    mitigation: string;
+    patch_url: string;
+  };
+  exaNews?: Array<{
+    title: string;
+    source: string;
+    url: string;
+    published_date: string;
+    summary: string;
+  }>;
 };
 
 export type DashboardAgent = {
@@ -46,15 +79,17 @@ export type DashboardUser = {
 export type KnowledgeNode = {
   nodeId: string;
   label: string;
-  type: string;
-  source: string;
+  type: "tag";
+  source: "s3" | "notion" | "both";
   summary: string;
   x: number;
   y: number;
   links: string[];
-  metadata?: Record<string, unknown>;
+  metadata?: {
+    documents: Array<{ path: string; source: "s3" | "notion"; title?: string }>;
+    weight: number;
+  };
   indexedAt?: string;
-  sourceId?: string;
 };
 
 export type DashboardData = {
@@ -97,6 +132,10 @@ export async function getDashboardData(): Promise<DashboardData> {
         content: message.content,
         toolName: message.toolName,
         exaResults: message.exaResults,
+        repoMonitors: message.repoMonitors,
+        exaVerdict: message.exaVerdict,
+        exaCVE: message.exaCVE,
+        exaNews: message.exaNews,
       })),
       agents: agents.map((agent) => ({
         agentId: agent.agentId,
@@ -123,7 +162,6 @@ export async function getDashboardData(): Promise<DashboardData> {
         links: node.links,
         metadata: node.metadata,
         indexedAt: node.indexedAt?.toISOString?.() ?? node.indexedAt,
-        sourceId: node.sourceId,
       })),
     };
   } catch (error) {
