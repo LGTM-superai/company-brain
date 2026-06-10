@@ -1,0 +1,1522 @@
+[
+    {
+        "id": "nvidia.nemotron-nano-12b-v2",
+        "provider": "NVIDIA",
+        "name": "NVIDIA Nemotron Nano 12B v2 VL BF16",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "anthropic.claude-haiku-4-5-20251001-v1:0",
+        "provider": "Anthropic",
+        "name": "Claude Haiku 4.5",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "qwen.qwen3-235b-a22b-2507-v1:0",
+        "provider": "Qwen",
+        "name": "Qwen3 235B A22B 2507",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "moonshotai.kimi-k2.5",
+        "provider": "Moonshot AI",
+        "name": "Kimi K2.5",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "openai.gpt-oss-120b-1:0",
+        "provider": "OpenAI",
+        "name": "gpt-oss-120b",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "stability.stable-creative-upscale-v1:0",
+        "provider": "Stability AI",
+        "name": "Stable Image Creative Upscale",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "IMAGE"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "qwen.qwen3-next-80b-a3b",
+        "provider": "Qwen",
+        "name": "Qwen3 Next 80B A3B",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "deepseek.v3.2",
+        "provider": "DeepSeek",
+        "name": "DeepSeek V3.2",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "nvidia.nemotron-nano-3-30b",
+        "provider": "NVIDIA",
+        "name": "Nemotron Nano 3 30B",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "anthropic.claude-sonnet-4-6",
+        "provider": "Anthropic",
+        "name": "Claude Sonnet 4.6",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "minimax.minimax-m2",
+        "provider": "MiniMax",
+        "name": "MiniMax M2",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "zai.glm-4.7-flash",
+        "provider": "Z.AI",
+        "name": "GLM 4.7 Flash",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "mistral.voxtral-mini-3b-2507",
+        "provider": "Mistral AI",
+        "name": "Voxtral Mini 3B 2507",
+        "input": [
+            "SPEECH",
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "amazon.nova-pro-v1:0",
+        "provider": "Amazon",
+        "name": "Nova Pro",
+        "input": [
+            "TEXT",
+            "IMAGE",
+            "VIDEO"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "stability.stable-image-remove-background-v1:0",
+        "provider": "Stability AI",
+        "name": "Stable Image Remove Background",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "IMAGE"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "stability.stable-image-control-sketch-v1:0",
+        "provider": "Stability AI",
+        "name": "Stable Image Control Sketch",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "IMAGE"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "amazon.nova-2-lite-v1:0",
+        "provider": "Amazon",
+        "name": "Nova 2 Lite",
+        "input": [
+            "TEXT",
+            "IMAGE",
+            "VIDEO"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "stability.stable-conservative-upscale-v1:0",
+        "provider": "Stability AI",
+        "name": "Stable Image Conservative Upscale",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "IMAGE"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "minimax.minimax-m2.5",
+        "provider": "MiniMax",
+        "name": "MiniMax M2.5",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "google.gemma-3-12b-it",
+        "provider": "Google",
+        "name": "Gemma 3 12B IT",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "stability.stable-image-search-recolor-v1:0",
+        "provider": "Stability AI",
+        "name": "Stable Image Search and Recolor",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "IMAGE"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "moonshot.kimi-k2-thinking",
+        "provider": "Moonshot AI",
+        "name": "Kimi K2 Thinking",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "mistral.mistral-large-3-675b-instruct",
+        "provider": "Mistral AI",
+        "name": "Mistral Large 3",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "twelvelabs.pegasus-1-2-v1:0",
+        "provider": "TwelveLabs",
+        "name": "Pegasus v1.2",
+        "input": [
+            "TEXT",
+            "VIDEO"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "amazon.nova-2-sonic-v1:0",
+        "provider": "Amazon",
+        "name": "Nova 2 Sonic",
+        "input": [
+            "SPEECH"
+        ],
+        "output": [
+            "SPEECH",
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "mistral.devstral-2-123b",
+        "provider": "Mistral AI",
+        "name": "Devstral 2 123B",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "minimax.minimax-m2.1",
+        "provider": "MiniMax",
+        "name": "MiniMax M2.1",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "nvidia.nemotron-super-3-120b",
+        "provider": "NVIDIA",
+        "name": "NVIDIA Nemotron 3 Super 120B A12B",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "qwen.qwen3-32b-v1:0",
+        "provider": "Qwen",
+        "name": "Qwen3 32B (dense)",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "mistral.ministral-3-14b-instruct",
+        "provider": "Mistral AI",
+        "name": "Ministral 14B 3.0",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "anthropic.claude-opus-4-6-v1",
+        "provider": "Anthropic",
+        "name": "Claude Opus 4.6",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "nvidia.nemotron-nano-9b-v2",
+        "provider": "NVIDIA",
+        "name": "NVIDIA Nemotron Nano 9B v2",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "mistral.ministral-3-8b-instruct",
+        "provider": "Mistral AI",
+        "name": "Ministral 3 8B",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "mistral.voxtral-small-24b-2507",
+        "provider": "Mistral AI",
+        "name": "Voxtral Small 24B 2507",
+        "input": [
+            "SPEECH",
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "zai.glm-5",
+        "provider": "Z.AI",
+        "name": "GLM 5",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "openai.gpt-oss-20b-1:0",
+        "provider": "OpenAI",
+        "name": "gpt-oss-20b",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "google.gemma-3-4b-it",
+        "provider": "Google",
+        "name": "Gemma 3 4B IT",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "stability.stable-fast-upscale-v1:0",
+        "provider": "Stability AI",
+        "name": "Stable Image Fast Upscale",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "IMAGE"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "anthropic.claude-opus-4-8",
+        "provider": "Anthropic",
+        "name": "Claude Opus 4.8",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "anthropic.claude-opus-4-7",
+        "provider": "Anthropic",
+        "name": "Claude Opus 4.7",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "stability.stable-image-erase-object-v1:0",
+        "provider": "Stability AI",
+        "name": "Stable Image Erase Object",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "IMAGE"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "openai.gpt-oss-safeguard-120b",
+        "provider": "OpenAI",
+        "name": "GPT OSS Safeguard 120B",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "google.gemma-3-27b-it",
+        "provider": "Google",
+        "name": "Gemma 3 27B PT",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "stability.stable-image-control-structure-v1:0",
+        "provider": "Stability AI",
+        "name": "Stable Image Control Structure",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "IMAGE"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "provider": "Anthropic",
+        "name": "Claude Sonnet 4.5",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "qwen.qwen3-vl-235b-a22b",
+        "provider": "Qwen",
+        "name": "Qwen3 VL 235B A22B",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "zai.glm-4.7",
+        "provider": "Z.AI",
+        "name": "GLM 4.7",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "writer.palmyra-vision-7b",
+        "provider": "Writer",
+        "name": "Writer Palmyra Vision 7B",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "stability.stable-outpaint-v1:0",
+        "provider": "Stability AI",
+        "name": "Stable Image Outpaint",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "IMAGE"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "stability.stable-image-inpaint-v1:0",
+        "provider": "Stability AI",
+        "name": "Stable Image Inpaint",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "IMAGE"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "anthropic.claude-opus-4-1-20250805-v1:0",
+        "provider": "Anthropic",
+        "name": "Claude Opus 4.1",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "qwen.qwen3-coder-480b-a35b-v1:0",
+        "provider": "Qwen",
+        "name": "Qwen3 Coder 480B A35B Instruct",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "stability.stable-image-style-guide-v1:0",
+        "provider": "Stability AI",
+        "name": "Stable Image Style Guide",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "IMAGE"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "mistral.magistral-small-2509",
+        "provider": "Mistral AI",
+        "name": "Magistral Small 2509",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "stability.stable-style-transfer-v1:0",
+        "provider": "Stability AI",
+        "name": "Stable Image Style Transfer",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "IMAGE"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "cohere.embed-v4:0",
+        "provider": "Cohere",
+        "name": "Embed v4",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "EMBEDDING"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "deepseek.v3-v1:0",
+        "provider": "DeepSeek",
+        "name": "DeepSeek-V3.1",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "mistral.ministral-3-3b-instruct",
+        "provider": "Mistral AI",
+        "name": "Ministral 3B",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "anthropic.claude-opus-4-5-20251101-v1:0",
+        "provider": "Anthropic",
+        "name": "Claude Opus 4.5",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "stability.stable-image-search-replace-v1:0",
+        "provider": "Stability AI",
+        "name": "Stable Image Search and Replace",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "IMAGE"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "qwen.qwen3-coder-30b-a3b-v1:0",
+        "provider": "Qwen",
+        "name": "Qwen3-Coder-30B-A3B-Instruct",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "openai.gpt-oss-safeguard-20b",
+        "provider": "OpenAI",
+        "name": "GPT OSS Safeguard 20B",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "amazon.titan-embed-g1-text-02",
+        "provider": "Amazon",
+        "name": "Titan Text Embeddings v2",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "EMBEDDING"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": null
+    },
+    {
+        "id": "amazon.nova-lite-v1:0",
+        "provider": "Amazon",
+        "name": "Nova Lite",
+        "input": [
+            "TEXT",
+            "IMAGE",
+            "VIDEO"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "amazon.nova-micro-v1:0",
+        "provider": "Amazon",
+        "name": "Nova Micro",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "amazon.titan-embed-text-v1:2:8k",
+        "provider": "Amazon",
+        "name": "Titan Embeddings G1 - Text",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "EMBEDDING"
+        ],
+        "inference": [
+            "PROVISIONED"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "amazon.titan-embed-text-v1",
+        "provider": "Amazon",
+        "name": "Titan Embeddings G1 - Text",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "EMBEDDING"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "amazon.titan-embed-text-v2:0",
+        "provider": "Amazon",
+        "name": "Titan Text Embeddings V2",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "EMBEDDING"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "amazon.titan-embed-image-v1:0",
+        "provider": "Amazon",
+        "name": "Titan Multimodal Embeddings G1",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "EMBEDDING"
+        ],
+        "inference": [
+            "PROVISIONED"
+        ],
+        "streaming": null
+    },
+    {
+        "id": "amazon.titan-embed-image-v1",
+        "provider": "Amazon",
+        "name": "Titan Multimodal Embeddings G1",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "EMBEDDING"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": null
+    },
+    {
+        "id": "amazon.rerank-v1:0",
+        "provider": "Amazon",
+        "name": "Rerank 1.0",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "stability.sd3-5-large-v1:0",
+        "provider": "Stability AI",
+        "name": "Stable Diffusion 3.5 Large",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "IMAGE"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": null
+    },
+    {
+        "id": "stability.stable-image-core-v1:1",
+        "provider": "Stability AI",
+        "name": "Stable Image Core 1.0",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "IMAGE"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": null
+    },
+    {
+        "id": "stability.stable-image-ultra-v1:1",
+        "provider": "Stability AI",
+        "name": "Stable Image Ultra 1.0",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "IMAGE"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": null
+    },
+    {
+        "id": "cohere.embed-english-v3:0:512",
+        "provider": "Cohere",
+        "name": "Embed English",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "EMBEDDING"
+        ],
+        "inference": [
+            "PROVISIONED"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "cohere.embed-english-v3",
+        "provider": "Cohere",
+        "name": "Embed English",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "EMBEDDING"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "cohere.embed-multilingual-v3:0:512",
+        "provider": "Cohere",
+        "name": "Embed Multilingual",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "EMBEDDING"
+        ],
+        "inference": [
+            "PROVISIONED"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "cohere.embed-multilingual-v3",
+        "provider": "Cohere",
+        "name": "Embed Multilingual",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "EMBEDDING"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "cohere.rerank-v3-5:0",
+        "provider": "Cohere",
+        "name": "Rerank 3.5",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "deepseek.r1-v1:0",
+        "provider": "DeepSeek",
+        "name": "DeepSeek-R1",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "meta.llama3-8b-instruct-v1:0",
+        "provider": "Meta",
+        "name": "Llama 3 8B Instruct",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "meta.llama3-70b-instruct-v1:0",
+        "provider": "Meta",
+        "name": "Llama 3 70B Instruct",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "meta.llama3-1-8b-instruct-v1:0:128k",
+        "provider": "Meta",
+        "name": "Llama 3.1 8B Instruct",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "PROVISIONED"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "meta.llama3-1-8b-instruct-v1:0",
+        "provider": "Meta",
+        "name": "Llama 3.1 8B Instruct",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND",
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "meta.llama3-1-70b-instruct-v1:0:128k",
+        "provider": "Meta",
+        "name": "Llama 3.1 70B Instruct",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "PROVISIONED"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "meta.llama3-1-70b-instruct-v1:0",
+        "provider": "Meta",
+        "name": "Llama 3.1 70B Instruct",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND",
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "meta.llama3-3-70b-instruct-v1:0:128k",
+        "provider": "Meta",
+        "name": "Llama 3.3 70B Instruct",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [],
+        "streaming": true
+    },
+    {
+        "id": "meta.llama3-3-70b-instruct-v1:0",
+        "provider": "Meta",
+        "name": "Llama 3.3 70B Instruct",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "meta.llama4-scout-17b-instruct-v1:0",
+        "provider": "Meta",
+        "name": "Llama 4 Scout 17B Instruct",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "meta.llama4-maverick-17b-instruct-v1:0",
+        "provider": "Meta",
+        "name": "Llama 4 Maverick 17B Instruct",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "mistral.mistral-7b-instruct-v0:2",
+        "provider": "Mistral AI",
+        "name": "Mistral 7B Instruct",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "mistral.mixtral-8x7b-instruct-v0:1",
+        "provider": "Mistral AI",
+        "name": "Mixtral 8x7B Instruct",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "mistral.mistral-large-2402-v1:0",
+        "provider": "Mistral AI",
+        "name": "Mistral Large (24.02)",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "mistral.mistral-large-2407-v1:0",
+        "provider": "Mistral AI",
+        "name": "Mistral Large (24.07)",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "mistral.pixtral-large-2502-v1:0",
+        "provider": "Mistral AI",
+        "name": "Pixtral Large (25.02)",
+        "input": [
+            "TEXT",
+            "IMAGE"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "luma.ray-v2:0",
+        "provider": "Luma AI",
+        "name": "Ray v2",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "VIDEO"
+        ],
+        "inference": [
+            "ON_DEMAND"
+        ],
+        "streaming": false
+    },
+    {
+        "id": "writer.palmyra-x4-v1:0",
+        "provider": "Writer",
+        "name": "Palmyra X4",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    },
+    {
+        "id": "writer.palmyra-x5-v1:0",
+        "provider": "Writer",
+        "name": "Palmyra X5",
+        "input": [
+            "TEXT"
+        ],
+        "output": [
+            "TEXT"
+        ],
+        "inference": [
+            "INFERENCE_PROFILE"
+        ],
+        "streaming": true
+    }
+]

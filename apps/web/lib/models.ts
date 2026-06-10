@@ -29,6 +29,7 @@ const ConversationSchema = new Schema(
     summary: { type: String, default: "" },
     updatedLabel: { type: String, default: "" },
     order: { type: Number, default: 0 },
+    pendingAction: { type: Schema.Types.Mixed, default: null },
   },
   { timestamps: true },
 );
@@ -41,6 +42,7 @@ const MessageSchema = new Schema(
     content: { type: String, required: true },
     toolName: { type: String },
     order: { type: Number, required: true },
+    toolData: { type: Schema.Types.Mixed, default: undefined },
     exaResults: {
       type: [
         {
@@ -70,6 +72,19 @@ const MessageSchema = new Schema(
     exaVerdict: { type: Schema.Types.Mixed, default: undefined },
     exaCVE: { type: Schema.Types.Mixed, default: undefined },
     exaNews: { type: [Schema.Types.Mixed], default: undefined },
+    budgetAllocations: { type: [Schema.Types.Mixed], default: undefined },
+    foodOrder: { type: Schema.Types.Mixed, default: undefined },
+  },
+  { timestamps: true },
+);
+
+const SlackAuditSchema = new Schema(
+  {
+    auditId: { type: String, required: true, unique: true },
+    conversationId: { type: String, required: true, index: true },
+    channel: { type: String, default: "#company-brain-actions" },
+    message: { type: String, required: true },
+    action: { type: Schema.Types.Mixed, default: undefined },
   },
   { timestamps: true },
 );
@@ -122,6 +137,9 @@ export const MessageModel = mongoose.models.Message ?? mongoose.model("Message",
 
 export const KnowledgeNodeModel =
   mongoose.models.KnowledgeNode ?? mongoose.model("KnowledgeNode", KnowledgeNodeSchema);
+
+export const SlackAuditModel =
+  mongoose.models.SlackAudit ?? mongoose.model("SlackAudit", SlackAuditSchema);
 
 export const ExaRunModel =
   mongoose.models.ExaRun ?? mongoose.model("ExaRun", ExaRunSchema);

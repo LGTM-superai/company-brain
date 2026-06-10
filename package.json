@@ -9,15 +9,34 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run --env-file=.env --cwd apps/web dev",
+    "dev": "bun run notion:mcp & bun run --env-file=.env --cwd apps/web dev",
     "dev:food": "cd apps/food-ordering && uvicorn api.app:app --reload",
+    "find:bedrock-model": "bun --env-file=.env scripts/find-bedrock-model.ts",
+    "notion:mcp": "bun --env-file=.env scripts/start-notion-mcp.ts",
+    "notion:verify": "bun --env-file=.env scripts/verify-notion-mcp.ts",
+    "notion:map-to-review": "bun --env-file=.env apps/web/scripts/move-map-ticket-review.ts",
+    "notion:reservation-body": "bun --env-file=.env apps/web/scripts/query-reservation-ticket-body.ts",
+    "mcp:tools": "bun --env-file=.env apps/web/scripts/list-notion-mcp-tools.ts",
+    "mcp:reservation-body": "bun --env-file=.env apps/web/scripts/query-reservation-ticket-body-mcp.ts",
+    "mcp:map-to-review": "bun --env-file=.env apps/web/scripts/move-map-ticket-review-mcp.ts",
+    "mcp:chat": "bun --env-file=.env apps/web/scripts/notion-mcp-agent-chat.ts",
+    "exa:superai-date": "bun --env-file=.env apps/web/scripts/query-superai-date-exa.ts",
+    "slack:test-action": "bun --env-file=.env apps/web/scripts/send-slack-test-action.ts",
+    "reset:demo": "bun --env-file=.env apps/web/scripts/reset-harbor-bean.ts",
     "seed": "bun --env-file=.env apps/web/scripts/seed.ts",
+    "smoke:demo": "bun --env-file=.env apps/web/scripts/smoke-demo.ts",
+    "test": "bun test",
+    "test:bedrock": "bun --env-file=.env scripts/test-bedrock-model.ts",
     "typecheck": "bun run --cwd apps/web typecheck"
   },
   "devDependencies": {
     "typescript": "^5.8.0"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-runtime": "^3.1065.0"
+    "@aws-sdk/client-bedrock-runtime": "^3.1065.0",
+    "@aws-sdk/client-sts": "^3.1064.0",
+    "@notionhq/notion-mcp-server": "^2.2.1",
+    "@smithy/node-http-handler": "^4.7.7",
+    "exa-js": "^2.13.0"
   }
 }

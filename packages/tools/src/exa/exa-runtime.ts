@@ -1,7 +1,7 @@
 import Exa from "exa-js";
+import { getEnv } from "../env";
 
-const EXA_BETAS = ["agent-2026-05-07"];
-const EXA_TIMEOUT_MS = 20_000;
+const EXA_TIMEOUT_MS = 30_000;
 
 export type ExaSearchItem = {
   title: string;
@@ -11,68 +11,33 @@ export type ExaSearchItem = {
 };
 
 export async function searchExa(query: string): Promise<ExaSearchItem[]> {
-  const apiKey = process.env.EXA_API_KEY;
+  const apiKey = getEnv("EXA_API_KEY");
   if (!apiKey) throw new Error("Missing required env var: EXA_API_KEY");
 
   const exa = new Exa(apiKey);
 
-  const run = (await withTimeout(
-    exa.beta.agent.runs.create({
-      betas: EXA_BETAS,
-      query: `${query} (return max 3 results)`,
-      outputSchema: {
-        type: "object",
-        properties: {
-          results: {
-            type: "array",
-            maxItems: 3,
-            items: {
-              type: "object",
-              properties: {
-                title: { type: "string" },
-                url: { type: "string" },
-                summary: { type: "string" },
-                published_date: { type: "string" },
-              },
-              required: ["title", "url", "summary", "published_date"],
-            },
-          },
-        },
-        required: ["results"],
-      },
+  const response = await withTimeout(
+    exa.searchAndContents(query, {
+      numResults: 3,
+      text: { maxCharacters: 500 },
+      livecrawl: "auto",
     }),
     EXA_TIMEOUT_MS,
-    "Exa search timed out while creating a run.",
-  )) as { id: string };
-
-  const completedRun = await withTimeout(
-    exa.beta.agent.runs.pollUntilFinished(run.id, {
-      betas: EXA_BETAS,
-      pollInterval: 500,
-      timeoutMs: EXA_TIMEOUT_MS,
-    }),
-    EXA_TIMEOUT_MS + 1000,
-    "Exa search timed out while polling.",
+    "Exa search timed out.",
   );
 
-  if (completedRun.status !== "completed") {
-    throw new Error(`Exa run failed with status: ${completedRun.status}`);
-  }
-
-  const structured = (completedRun.output as { structured?: unknown } | undefined)?.structured;
-  return normalizeResults(structured);
+  return normalizeResults(response.results);
 }
 
-function normalizeResults(input: unknown): ExaSearchItem[] {
-  const value = isRecord(input) ? input : {};
-  const results = Array.isArray(value.results) ? value.results : [];
+function normalizeResults(results: unknown): ExaSearchItem[] {
+  if (!Array.isArray(results)) return [];
   return results.map((item: unknown) => {
     const r = isRecord(item) ? item : {};
     return {
       title: str(r.title, "Untitled"),
       url: str(r.url, ""),
-      summary: str(r.summary, "No summary available."),
-      published_date: str(r.published_date, ""),
+      summary: str(r.text, "No summary available."),
+      published_date: str(r.publishedDate, ""),
     };
   });
 }

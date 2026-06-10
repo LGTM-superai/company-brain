@@ -1,8 +1,9 @@
+import { requireEnv } from "../env";
+
 const GITHUB_API = "https://api.github.com";
 
 function getHeaders(): Record<string, string> {
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) throw new Error("Missing GITHUB_TOKEN env var");
+  const token = requireEnv("GITHUB_TOKEN");
   return {
     Authorization: `Bearer ${token}`,
     Accept: "application/vnd.github+json",

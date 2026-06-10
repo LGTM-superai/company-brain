@@ -48,6 +48,7 @@ export type DashboardMessage = {
   role: "user" | "assistant" | "tool";
   content: string;
   toolName?: string;
+  toolData?: unknown;
   exaResults?: Array<{
     title: string;
     url: string;
@@ -66,11 +67,14 @@ export type DashboardMessage = {
   }>;
   exaVerdict?: {
     verdict: string;
+    blocker_validity?: string;
     confidence: string;
     evidence_url: string;
     evidence_title: string;
     summary: string;
     recommended_next_step: string;
+    notion_note_suggestion?: string;
+    slack_message_suggestion?: string;
   };
   exaCVE?: {
     cve_id: string;
@@ -157,33 +161,38 @@ export async function getDashboardData(): Promise<DashboardData> {
         summary: conversation.summary,
         updatedLabel: conversation.updatedLabel,
       })),
-      messages: messages.map((message) => JSON.parse(JSON.stringify({
-        messageId: message.messageId,
-        role: message.role,
-        content: message.content,
-        toolName: message.toolName,
-        exaResults: message.exaResults?.map((r: Record<string, unknown>) => ({
-          title: r.title,
-          url: r.url,
-          summary: r.summary,
-          publishedDate: r.publishedDate,
-        })),
-        repoMonitors: message.repoMonitors?.map((r: Record<string, unknown>) => ({
-          owner: r.owner,
-          repo: r.repo,
-          monitorId: r.monitorId,
-          packages: r.packages,
-          slackChannelId: r.slackChannelId,
-          severityThreshold: r.severityThreshold,
-          status: r.status,
-          createdAt: r.createdAt,
-        })),
-        exaVerdict: message.exaVerdict,
-        exaCVE: message.exaCVE,
-        exaNews: message.exaNews,
-        budgetAllocations: message.budgetAllocations,
-        foodOrder: message.foodOrder,
-      }))),
+      messages: messages.map((message) =>
+        JSON.parse(
+          JSON.stringify({
+            messageId: message.messageId,
+            role: message.role,
+            content: message.content,
+            toolName: message.toolName,
+            toolData: message.toolData,
+            exaResults: message.exaResults?.map((result: Record<string, unknown>) => ({
+              title: result.title,
+              url: result.url,
+              summary: result.summary,
+              publishedDate: result.publishedDate,
+            })),
+            repoMonitors: message.repoMonitors?.map((monitor: Record<string, unknown>) => ({
+              owner: monitor.owner,
+              repo: monitor.repo,
+              monitorId: monitor.monitorId,
+              packages: monitor.packages,
+              slackChannelId: monitor.slackChannelId,
+              severityThreshold: monitor.severityThreshold,
+              status: monitor.status,
+              createdAt: monitor.createdAt,
+            })),
+            exaVerdict: message.exaVerdict,
+            exaCVE: message.exaCVE,
+            exaNews: message.exaNews,
+            budgetAllocations: message.budgetAllocations,
+            foodOrder: message.foodOrder,
+          }),
+        ),
+      ),
       agents: agents.map((agent) => ({
         agentId: agent.agentId,
         name: agent.name,

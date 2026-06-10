@@ -1,5 +1,5 @@
 import Exa from "exa-js";
-import { requireEnv } from "./env";
+import { requireEnv } from "./apps/web/lib/env";
 
 export type ExaVerdict = {
   verdict: string;
@@ -36,6 +36,83 @@ export type ExaNewsArticle = {
 
 const EXA_BETAS = ["agent-2026-05-07"];
 const EXA_TIMEOUT_MS = 20_000;
+const EXA_DEEP_TIMEOUT_MS = 60_000;
+
+export async function queryExaSearchFast(query: string) {
+  try {
+    const exa = new Exa(requireEnv("EXA_API_KEY"));
+    const response = await exa.searchAndContents(query, {
+      numResults: 3,
+      text: { maxCharacters: 500 },
+      livecrawl: "auto",
+    });
+
+    const results: ExaSearchItem[] = (response.results ?? []).map((r) => ({
+      title: r.title ?? "Untitled",
+      url: r.url ?? "",
+      summary: r.text ?? "No summary available.",
+      published_date: r.publishedDate ?? "",
+    }));
+
+    return { ok: true as const, tool: "queryExa", query, results };
+  } catch (error) {
+    return { ok: false as const, tool: "queryExa", message: "Tool failed: queryExaSearch", error: error instanceof Error ? error.message : "Unknown Exa error." };
+  }
+}
+
+export async function queryExaCVEFast(query: string) {
+  try {
+    const exa = new Exa(requireEnv("EXA_API_KEY"));
+    const response = await exa.searchAndContents(`CVE vulnerability advisory: ${query}`, {
+      numResults: 3,
+      text: { maxCharacters: 800 },
+      livecrawl: "auto",
+    });
+
+    const top = response.results?.[0];
+    const result: ExaCVEResult = {
+      cve_id: extractCveId(top?.text ?? query) ?? "Unknown CVE",
+      severity: "unknown",
+      affected_packages: [],
+      summary: top?.text?.slice(0, 500) ?? "No summary available.",
+      mitigation: "See source URL for mitigation details.",
+      patch_url: top?.url ?? "",
+    };
+
+    return { ok: true as const, tool: "queryExa", query, result };
+  } catch (error) {
+    return { ok: false as const, tool: "queryExa", message: "Tool failed: queryExaCVE", error: error instanceof Error ? error.message : "Unknown Exa error." };
+  }
+}
+
+export async function queryExaNewsFast(query: string) {
+  try {
+    const exa = new Exa(requireEnv("EXA_API_KEY"));
+    const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const response = await exa.searchAndContents(`Recent news: ${query}`, {
+      numResults: 3,
+      text: { maxCharacters: 400 },
+      livecrawl: "auto",
+      startPublishedDate: oneWeekAgo,
+    });
+
+    const articles: ExaNewsArticle[] = (response.results ?? []).map((r) => ({
+      title: r.title ?? "Untitled",
+      source: new URL(r.url ?? "https://unknown").hostname.replace("www.", ""),
+      url: r.url ?? "",
+      published_date: r.publishedDate ?? "",
+      summary: r.text?.slice(0, 400) ?? "No summary available.",
+    }));
+
+    return { ok: true as const, tool: "queryExa", query, articles };
+  } catch (error) {
+    return { ok: false as const, tool: "queryExa", message: "Tool failed: queryExaNews", error: error instanceof Error ? error.message : "Unknown Exa error." };
+  }
+}
+
+function extractCveId(text: string) {
+  return text.match(/CVE-\d{4}-\d{4,}/)?.[0] ?? null;
+}
 
 export async function queryExaVerdict(query: string) {
   try {

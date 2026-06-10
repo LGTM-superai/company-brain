@@ -10,6 +10,20 @@ export type CompanyUser = {
   responsibilities: string[];
 };
 
+export function resolveAssignee(input: string): string | undefined {
+  const key = input.trim().replace(/\s+/g, " ").toLowerCase();
+  if (!key) return undefined;
+  return assigneeAliasMap[key];
+}
+
+export function isKnownAssignee(value: string): boolean {
+  return resolveAssignee(value) !== undefined;
+}
+
+export function canonicalAssigneeNames(): string[] {
+  return users.map((u) => u.name);
+}
+
 export const users: CompanyUser[] = [
   {
     id: "edrick",
@@ -48,3 +62,22 @@ export const users: CompanyUser[] = [
     responsibilities: ["Client/project documentation", "Launch coordination"],
   },
 ];
+
+const assigneeAliasMap: Record<string, string> = Object.fromEntries(
+  users.flatMap((u) => {
+    const full = u.name;
+    const parts = full.split(" ");
+    const entries: [string, string][] = [
+      [u.id, full],
+      [full.toLowerCase(), full],
+    ];
+    if (parts.length >= 2) {
+      entries.push([parts[0].toLowerCase(), full]);
+      entries.push([`${parts[0]} ${parts[1]}`.toLowerCase(), full]);
+    }
+    if (parts.length >= 3) {
+      entries.push([`${parts[0]} ${parts[1]} ${parts[2]}`.toLowerCase(), full]);
+    }
+    return entries;
+  }),
+);

@@ -1,6 +1,7 @@
 import { KnowledgeGraph } from "../../components/knowledge-graph";
 import { AppShell } from "../../components/shell";
 import { getDashboardData } from "../../lib/data";
+import { getSessionUser } from "../../lib/session";
 import {
   Card,
   CardContent,
@@ -11,14 +12,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 
 export default async function KnowledgeGraphPage() {
-  const data = await getDashboardData();
+  const [data, sessionUser] = await Promise.all([getDashboardData(), getSessionUser()]);
 
   const tagCount = data.knowledgeNodes.length;
   const edgeCount = data.knowledgeNodes.reduce((sum, n) => sum + n.links.length, 0) / 2;
   const sources = new Set(data.knowledgeNodes.map((n) => n.source));
 
   return (
-    <AppShell activePath="/knowledge-graph">
+    <AppShell activePath="/knowledge-graph" currentUser={sessionUser ? { id: sessionUser.id, name: sessionUser.name, role: sessionUser.role } : null}>
       {data.error ? (
         <div className="m-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">
           {data.error} Run <code className="font-mono">bun run seed</code> after

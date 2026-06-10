@@ -10,11 +10,13 @@ export function CommandCenter({
   initialMessages,
   agents,
   error,
+  currentUser,
 }: {
   conversations: DashboardConversation[];
   initialMessages: DashboardMessage[];
   agents: DashboardAgent[];
   error?: string;
+  currentUser?: { id: string; name: string; role: string } | null;
 }) {
   const [conversations, setConversations] = useState(initialConversations);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
@@ -79,6 +81,7 @@ export function CommandCenter({
       onSelectConversation={handleSelectConversation}
       onNewChat={handleNewChat}
       onDeleteConversation={handleDeleteConversation}
+      currentUser={currentUser}
     >
       {error ? (
         <div className="m-4 border border-error/30 rounded-lg bg-error/5 p-3 text-error text-sm">

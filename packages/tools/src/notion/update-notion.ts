@@ -6,7 +6,7 @@ export const updateNotion: ToolDefinition = {
   mode: "write",
   owners: ["edrick"],
   allowedAgents: ["updater"],
-  description: "Update ticket status, assignee, priority, blocked reason, or notes on the Notion sprint board.",
+  description: "Update mutable Notion sprint board fields or a controlled Latest agent note on a ticket.",
   promptPath: "packages/tools/src/notion/update-notion.prompt.md",
   run: createScaffoldTool("updateNotion", "Scaffolded Notion sprint board update."),
 };

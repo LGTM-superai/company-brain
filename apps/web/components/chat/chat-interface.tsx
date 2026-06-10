@@ -51,7 +51,7 @@ export function ChatInterface({
   const [messages, setMessages] = useState<ChatItem[]>(initialMessages);
   const [input, setInput] = useState("");
   const [isRunning, setIsRunning] = useState(false);
-  const [pendingRuns, setPendingRuns] = useState<Map<string, ExaUseCase>>(new Map());
+  const [deepSearch, setDeepSearch] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const toolCount = useMemo(() => new Set(agents.flatMap((agent) => agent.tools)).size, [agents]);
@@ -66,65 +66,6 @@ export function ChatInterface({
     }
   }, [messages]);
 
-  useEffect(() => {
-    if (pendingRuns.size === 0) return;
-
-    const interval = setInterval(async () => {
-      for (const [runId, useCase] of pendingRuns) {
-        try {
-          const res = await fetch(`/api/runs/${runId}/events`);
-          if (!res.ok) continue;
-          const data = await res.json();
-
-          if (data.status === "completed" || data.status === "failed") {
-            setMessages((prev) =>
-              prev.map((msg) => {
-                if (!("_runId" in msg) || msg._runId !== runId) return msg;
-
-                if (data.status === "failed") {
-                  return { ...msg, _pending: false, content: data.error ?? "Exa search failed." };
-                }
-
-                const result = data.result;
-                const updated: ChatItem = { ...msg, _pending: false };
-
-                if (useCase === "research" && result?.results) {
-                  updated.exaResults = result.results.map((r: { title: string; url: string; summary: string; published_date?: string }) => ({
-                    title: r.title,
-                    url: r.url,
-                    summary: r.summary,
-                    publishedDate: r.published_date,
-                  }));
-                  updated.content = "Exa search results";
-                } else if (useCase === "verification" && result?.verdict) {
-                  updated.exaVerdict = result.verdict;
-                  updated.content = "Exa verdict";
-                } else if (useCase === "cve" && result?.result) {
-                  updated.exaCVE = result.result;
-                  updated.content = "CVE details";
-                } else if (useCase === "news" && result?.articles) {
-                  updated.exaNews = result.articles;
-                  updated.content = "News results";
-                }
-
-                return updated;
-              }),
-            );
-
-            setPendingRuns((prev) => {
-              const next = new Map(prev);
-              next.delete(runId);
-              return next;
-            });
-          }
-        } catch {
-          // polling error — will retry next interval
-        }
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, [pendingRuns]);
 
   async function submitMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -146,100 +87,112 @@ export function ChatInterface({
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId: activeConversationId ?? undefined, message: text }),
+        body: JSON.stringify({ conversationId: activeConversationId ?? undefined, message: text, deepSearch }),
       });
 
-      if (!response.ok) {
+      if (!response.ok || !response.body) {
         throw new Error("Company Brain could not persist this run.");
       }
 
-      const payload = (await response.json()) as { conversationId: string; events: AgentEvent[] };
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let streamingMessageId = `assistant-stream-${Date.now()}`;
+      let streamingContent = "";
+      let conversationReported = false;
 
-      if (payload.conversationId && onConversationCreated) {
-        onConversationCreated(payload.conversationId, text.length > 49 ? text.slice(0, 49) + "..." : text);
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        let eventType = "";
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            eventType = line.slice(7);
+          } else if (line.startsWith("data: ") && eventType) {
+            const data = JSON.parse(line.slice(6));
+
+            if (eventType === "meta") {
+              if (!conversationReported && data.conversationId && onConversationCreated) {
+                onConversationCreated(data.conversationId, text.length > 49 ? text.slice(0, 49) + "..." : text);
+                conversationReported = true;
+              }
+            } else if (eventType === "tool_call") {
+              setMessages((current) => [...current, {
+                messageId: `tool-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                role: "tool",
+                content: `Tool called: ${data.tool}`,
+                toolName: data.tool,
+              }]);
+            } else if (eventType === "text_delta") {
+              streamingContent += data.delta;
+              const content = streamingContent;
+              const msgId = streamingMessageId;
+              setMessages((current) => {
+                const existing = current.find((m) => m.messageId === msgId);
+                if (existing) {
+                  return current.map((m) => m.messageId === msgId ? { ...m, content } : m);
+                }
+                return [...current, { messageId: msgId, role: "assistant" as const, content }];
+              });
+            } else if (eventType === "agent_event") {
+              const agentEvent = data as AgentEvent;
+              const eventMsg: ChatItem = {
+                messageId: `event-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                role: "tool",
+                content: agentEvent.type,
+                toolName: "queryExa",
+              };
+              if (agentEvent.type === "exa_results") {
+                eventMsg.exaResults = agentEvent.results;
+                eventMsg.content = "Exa search results";
+              } else if (agentEvent.type === "exa_verdict") {
+                eventMsg.exaVerdict = agentEvent.verdict;
+                eventMsg.content = "Exa verdict";
+              } else if (agentEvent.type === "exa_cve") {
+                eventMsg.exaCVE = agentEvent.result;
+                eventMsg.content = "CVE details";
+              } else if (agentEvent.type === "exa_news") {
+                eventMsg.exaNews = agentEvent.articles;
+                eventMsg.content = "News results";
+              } else if (agentEvent.type === "repo_monitors") {
+                eventMsg.toolName = "queryRepos";
+                eventMsg.repoMonitors = agentEvent.monitors;
+                eventMsg.content = "Repo monitors";
+              } else if (agentEvent.type === "budget_allocated") {
+                eventMsg.toolName = "makePayment";
+                eventMsg.budgetAllocations = agentEvent.allocations;
+                eventMsg.content = "Budget allocated";
+              } else if (agentEvent.type === "food_order") {
+                eventMsg.toolName = "buySomething";
+                eventMsg.foodOrder = agentEvent.order;
+                eventMsg.content = "Food order";
+              }
+              setMessages((current) => [...current, eventMsg]);
+            } else if (eventType === "done" || eventType === "error") {
+              const content = data.content ?? "";
+              const msgId = streamingMessageId;
+              if (streamingContent) {
+                setMessages((current) =>
+                  current.map((m) => m.messageId === msgId ? { ...m, content: content || streamingContent } : m)
+                );
+              } else if (content) {
+                setMessages((current) => [...current, {
+                  messageId: msgId,
+                  role: "assistant" as const,
+                  content,
+                }]);
+              }
+            }
+
+            eventType = "";
+          }
+        }
       }
-
-      const eventMessages: ChatItem[] = [];
-
-      payload.events.forEach((agentEvent, index) => {
-        if (agentEvent.type === "tool_call") {
-          eventMessages.push({
-            messageId: `tool-${Date.now()}-${index}`,
-            role: "tool",
-            content: `Tool called: ${agentEvent.tool}`,
-            toolName: agentEvent.tool,
-          });
-          return;
-        }
-
-        if (agentEvent.type === "exa_searching") {
-          eventMessages.push({
-            messageId: `exa-pending-${agentEvent.runId}`,
-            role: "tool",
-            content: `Searching (${agentEvent.useCase})...`,
-            toolName: "queryExa",
-            _pending: true,
-            _runId: agentEvent.runId,
-            _useCase: agentEvent.useCase,
-          });
-          setPendingRuns((prev) => new Map(prev).set(agentEvent.runId, agentEvent.useCase));
-          return;
-        }
-
-        if (agentEvent.type === "exa_results") {
-          eventMessages.push({
-            messageId: `exa-${Date.now()}-${index}`,
-            role: "tool",
-            content: "Exa search results",
-            toolName: "queryExa",
-            exaResults: agentEvent.results,
-          });
-          return;
-        }
-
-        if (agentEvent.type === "repo_monitors") {
-          eventMessages.push({
-            messageId: `repos-${Date.now()}-${index}`,
-            role: "tool",
-            content: "Repo monitors",
-            toolName: "queryRepos",
-            repoMonitors: agentEvent.monitors,
-          });
-          return;
-        }
-
-        if (agentEvent.type === "budget_allocated") {
-          eventMessages.push({
-            messageId: `budget-${Date.now()}-${index}`,
-            role: "tool",
-            content: "Budget allocated",
-            toolName: "makePayment",
-            budgetAllocations: agentEvent.allocations,
-          });
-          return;
-        }
-
-        if (agentEvent.type === "food_order") {
-          eventMessages.push({
-            messageId: `food-${Date.now()}-${index}`,
-            role: "tool",
-            content: "Food order",
-            toolName: "buySomething",
-            foodOrder: agentEvent.order,
-          });
-          return;
-        }
-
-        if (agentEvent.type === "assistant_message") {
-          eventMessages.push({
-            messageId: `assistant-${Date.now()}-${index}`,
-            role: "assistant",
-            content: agentEvent.content,
-          });
-        }
-      });
-
-      setMessages((current) => [...current, ...eventMessages]);
     } catch (error) {
       setMessages((current) => [
         ...current,
@@ -289,6 +242,21 @@ export function ChatInterface({
             type="text"
           />
           <div className="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => setDeepSearch((prev) => !prev)}
+              className={cn(
+                "h-8 w-8 cursor-pointer transition-colors",
+                deepSearch
+                  ? "text-primary bg-primary/10 hover:bg-primary/20"
+                  : "text-muted-foreground hover:text-accent",
+              )}
+              title={deepSearch ? "Deep Search ON (Exa Agent)" : "Deep Search OFF (fast)"}
+            >
+              <Sparkles className="h-4 w-4" />
+            </Button>
             <Button
               type="button"
               variant="ghost"
