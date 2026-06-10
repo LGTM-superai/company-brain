@@ -7,6 +7,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@company-brain/shared": "workspace:*"
+    "@company-brain/shared": "workspace:*",
+    "@slack/web-api": "^7.0.0",
+    "exa-js": "^2.13.0"
   }
 }

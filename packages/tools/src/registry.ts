@@ -5,6 +5,7 @@ import { updateSlack } from "./slack/update-slack";
 import { queryGithub } from "./github/query-github";
 import { updateGithub } from "./github/update-github";
 import { queryExa } from "./exa/query-exa";
+import { queryRepos } from "./repos/query-repos";
 import { makePayment } from "./payments/make-payment";
 import { buySomething } from "./payments/buy-something";
 
@@ -16,6 +17,7 @@ export const toolRegistry = {
   queryGithub,
   updateGithub,
   queryExa,
+  queryRepos,
   makePayment,
   buySomething,
 } as const;
