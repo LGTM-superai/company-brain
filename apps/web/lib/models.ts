@@ -111,6 +111,24 @@ const KnowledgeNodeSchema = new Schema(
   { timestamps: true },
 );
 
+const KBDocumentSchema = new Schema(
+  {
+    key: { type: String, required: true, unique: true },
+    title: { type: String, required: true },
+    domain: { type: String, required: true, index: true },
+    sensitivity: { type: String, enum: ["public", "internal", "confidential", "restricted"], required: true },
+    tags: { type: [String], default: [], index: true },
+    summary: { type: String, default: "" },
+    owner: { type: String, default: undefined },
+    team: { type: String, default: undefined },
+    s3Bucket: { type: String, required: true },
+    s3Key: { type: String, required: true },
+    contentType: { type: String, default: "text/plain" },
+    sizeBytes: { type: Number, default: 0 },
+  },
+  { timestamps: true },
+);
+
 const ExaRunSchema = new Schema(
   {
     runId: { type: String, required: true, unique: true },
@@ -140,6 +158,9 @@ export const KnowledgeNodeModel =
 
 export const SlackAuditModel =
   mongoose.models.SlackAudit ?? mongoose.model("SlackAudit", SlackAuditSchema);
+
+export const KBDocumentModel =
+  mongoose.models.KBDocument ?? mongoose.model("KBDocument", KBDocumentSchema);
 
 export const ExaRunModel =
   mongoose.models.ExaRun ?? mongoose.model("ExaRun", ExaRunSchema);

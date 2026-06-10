@@ -93,6 +93,10 @@ export type DashboardMessage = {
   }>;
   budgetAllocations?: BudgetAllocation[];
   foodOrder?: FoodOrder;
+  kbDocuments?: import("@company-brain/shared").KBDocumentResult[];
+  toolFailure?: { tool: string; error: string; recovery: string };
+  serviceStatus?: { service: string; status: "healthy" | "degraded" | "down" };
+  plan?: import("@company-brain/shared").AgentPlan;
 };
 
 export type DashboardAgent = {

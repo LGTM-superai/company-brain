@@ -3,7 +3,7 @@
 import { useMemo, useRef, useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { AgentEvent, ExaUseCase } from "@company-brain/shared";
+import type { AgentEvent, AgentPlan, ExaUseCase } from "@company-brain/shared";
 import type { DashboardAgent, DashboardConversation, DashboardMessage } from "../../lib/data";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -11,11 +11,15 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  Send, Mic, Bot, Wrench, Sparkles, ExternalLink, Shield,
+  Send, Bot, Wrench, Sparkles, ExternalLink, Shield, Download, FileText,
   Package, Pause, AlertTriangle, Search, CheckCircle, XCircle,
   Newspaper, Bug, CreditCard, UtensilsCrossed, Users, DollarSign,
   Leaf, ShieldAlert,
 } from "lucide-react";
+import { FailureCard } from "./failure-card";
+import { ServiceStatusBadge } from "./service-status-badge";
+import { PlanCard } from "./plan-card";
+import { KBUploadDialog } from "./kb-upload-dialog";
 
 type ChatItem =
   | DashboardMessage
@@ -31,6 +35,10 @@ type ChatItem =
       exaNews?: DashboardMessage["exaNews"];
       budgetAllocations?: DashboardMessage["budgetAllocations"];
       foodOrder?: DashboardMessage["foodOrder"];
+      kbDocuments?: DashboardMessage["kbDocuments"];
+      toolFailure?: { tool: string; error: string; recovery: string };
+      serviceStatus?: { service: string; status: "healthy" | "degraded" | "down" };
+      plan?: AgentPlan;
       _pending?: boolean;
       _runId?: string;
       _useCase?: ExaUseCase;
@@ -122,12 +130,35 @@ export function ChatInterface({
                 conversationReported = true;
               }
             } else if (eventType === "tool_call") {
-              setMessages((current) => [...current, {
-                messageId: `tool-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                role: "tool",
-                content: `Tool called: ${data.tool}`,
-                toolName: data.tool,
-              }]);
+              const toolName = data.tool as string;
+              const isDelegation = toolName.startsWith("delegateTo") || toolName === "proposePlan";
+              if (!isDelegation) {
+                const info = TOOL_DESCRIPTIONS[toolName];
+                const queryText = data.query ? String(data.query) : "";
+                setMessages((current) => [...current, {
+                  messageId: `tool-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                  role: "tool",
+                  content: queryText || info?.desc || toolName,
+                  toolName,
+                }]);
+              }
+            } else if (eventType === "tool_done") {
+              const toolName = data.tool as string;
+              const summary = data.summary as string;
+              const isError = data.error as boolean | undefined;
+              setMessages((current) => {
+                const lastToolIdx = [...current].reverse().findIndex(
+                  (m) => m.role === "tool" && m.toolName === toolName
+                );
+                if (lastToolIdx === -1) return current;
+                const idx = current.length - 1 - lastToolIdx;
+                const updated = [...current];
+                updated[idx] = {
+                  ...updated[idx],
+                  content: `${updated[idx].content}\n${isError ? "⚠ " : "✓ "}${summary}`,
+                };
+                return updated;
+              });
             } else if (eventType === "text_delta") {
               streamingContent += data.delta;
               const content = streamingContent;
@@ -141,6 +172,21 @@ export function ChatInterface({
               });
             } else if (eventType === "agent_event") {
               const agentEvent = data as AgentEvent;
+
+              if (agentEvent.type === "agent_delegation") {
+                const key = `delegate:${agentEvent.agent}`;
+                const info = TOOL_DESCRIPTIONS[key];
+                const taskDesc = agentEvent.query || agentEvent.task || info?.desc || `Delegated to ${agentEvent.agent}`;
+                setMessages((current) => [...current, {
+                  messageId: `delegation-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                  role: "tool",
+                  content: taskDesc,
+                  toolName: key,
+                }]);
+                eventType = "";
+                continue;
+              }
+
               const eventMsg: ChatItem = {
                 messageId: `event-${Date.now()}-${Math.random().toString(36).slice(2)}`,
                 role: "tool",
@@ -171,6 +217,60 @@ export function ChatInterface({
                 eventMsg.toolName = "buySomething";
                 eventMsg.foodOrder = agentEvent.order;
                 eventMsg.content = "Food order";
+              } else if (agentEvent.type === "kb_documents") {
+                eventMsg.toolName = "queryKnowledgeBase";
+                eventMsg.kbDocuments = agentEvent.documents;
+                eventMsg.content = "Knowledge Base";
+              } else if (agentEvent.type === "tool_failure") {
+                eventMsg.toolName = agentEvent.tool;
+                eventMsg.toolFailure = {
+                  tool: agentEvent.tool,
+                  error: agentEvent.error,
+                  recovery: agentEvent.recovery,
+                };
+                eventMsg.content = `Tool failure: ${agentEvent.tool}`;
+              } else if (agentEvent.type === "service_status") {
+                eventMsg.toolName = "service_status";
+                eventMsg.serviceStatus = {
+                  service: agentEvent.service,
+                  status: agentEvent.status,
+                };
+                eventMsg.content = `${agentEvent.service}: ${agentEvent.status}`;
+              } else if (agentEvent.type === "plan_proposed") {
+                eventMsg.toolName = "plan";
+                eventMsg.plan = agentEvent.plan;
+                eventMsg.content = "Execution plan";
+              } else if (agentEvent.type === "plan_step_start") {
+                setMessages((current) =>
+                  current.map((m) => {
+                    if ("plan" in m && m.plan?.planId === agentEvent.planId) {
+                      const updatedSteps = m.plan!.steps.map((s) =>
+                        s.id === agentEvent.stepId ? { ...s, status: "running" as const } : s
+                      );
+                      return { ...m, plan: { ...m.plan!, steps: updatedSteps, status: "executing" as const } };
+                    }
+                    return m;
+                  })
+                );
+                eventType = "";
+                continue;
+              } else if (agentEvent.type === "plan_step_done") {
+                setMessages((current) =>
+                  current.map((m) => {
+                    if ("plan" in m && m.plan?.planId === agentEvent.planId) {
+                      const updatedSteps = m.plan!.steps.map((s) =>
+                        s.id === agentEvent.stepId
+                          ? { ...s, status: agentEvent.success ? "done" as const : "failed" as const }
+                          : s
+                      );
+                      const allDone = updatedSteps.every((s) => s.status === "done" || s.status === "failed" || s.status === "skipped");
+                      return { ...m, plan: { ...m.plan!, steps: updatedSteps, status: allDone ? "completed" as const : "executing" as const } };
+                    }
+                    return m;
+                  })
+                );
+                eventType = "";
+                continue;
               }
               setMessages((current) => [...current, eventMsg]);
             } else if (eventType === "done" || eventType === "error") {
@@ -257,14 +357,7 @@ export function ChatInterface({
             >
               <Sparkles className="h-4 w-4" />
             </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-accent cursor-pointer"
-            >
-              <Mic className="h-4 w-4" />
-            </Button>
+            <KBUploadDialog />
             <Button
               type="submit"
               disabled={isRunning}
@@ -565,6 +658,86 @@ function FoodOrderCard({ order }: { order: NonNullable<DashboardMessage["foodOrd
   );
 }
 
+function KBDocumentsCard({ documents }: { documents: NonNullable<DashboardMessage["kbDocuments"]> }) {
+  const handleDownload = async (doc: typeof documents[number]) => {
+    const url = doc.downloadUrl;
+    if (!url) return;
+    try {
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.downloadUrl) {
+        window.open(data.downloadUrl, "_blank");
+      }
+    } catch {
+      // Fallback: open the API endpoint directly
+      window.open(url, "_blank");
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 mb-1">
+        <FileText className="h-3.5 w-3.5 text-primary" />
+        <span className="text-xs font-medium text-foreground">
+          Documents ({documents.length})
+        </span>
+      </div>
+      {documents.map((doc) => (
+        <Card key={doc.id ?? doc.key} className="bg-card border-border">
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-grow min-w-0">
+                <strong className="text-sm text-foreground leading-tight block truncate">
+                  {doc.title}
+                </strong>
+                {doc.summary && (
+                  <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{doc.summary}</p>
+                )}
+                <div className="flex items-center gap-2 mt-1.5">
+                  <Badge variant="secondary" className="text-[10px] h-5">{doc.domain}</Badge>
+                  <Badge className="text-[10px] h-5 bg-accent/10 text-accent">{doc.sensitivity}</Badge>
+                  {doc.tags?.slice(0, 2).map((tag) => (
+                    <span key={tag} className="text-[10px] bg-muted px-1.5 py-0.5 rounded text-muted-foreground">{tag}</span>
+                  ))}
+                </div>
+              </div>
+              {doc.downloadUrl && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10 flex-shrink-0"
+                  onClick={() => handleDownload(doc)}
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+const TOOL_DESCRIPTIONS: Record<string, { label: string; desc: string }> = {
+  queryNotion: { label: "Notion", desc: "Reading sprint board tickets" },
+  updateNotion: { label: "Notion", desc: "Updating ticket fields" },
+  querySlack: { label: "Slack", desc: "Checking recent messages" },
+  updateSlack: { label: "Slack", desc: "Sending notification" },
+  queryGithub: { label: "GitHub", desc: "Fetching PRs and issues" },
+  updateGithub: { label: "GitHub", desc: "Creating issue or commenting" },
+  queryExa: { label: "Exa Search", desc: "Searching the web" },
+  queryRepos: { label: "CVE Monitors", desc: "Checking registered repos" },
+  queryKnowledgeBase: { label: "Knowledge Base", desc: "Searching internal docs" },
+  makePayment: { label: "Stripe", desc: "Processing payment" },
+  buySomething: { label: "Food Order", desc: "Finding restaurants and ordering" },
+  "delegate:searcher": { label: "Searcher Agent", desc: "Gathering data from company sources" },
+  "delegate:updater": { label: "Updater Agent", desc: "Updating external systems" },
+  "delegate:coder": { label: "Coder Agent", desc: "Handling GitHub operations" },
+  "delegate:paymentsManager": { label: "Payments Agent", desc: "Running payment workflow" },
+  plan: { label: "Execution Plan", desc: "Agent planning steps" },
+};
+
 function MessageBubble({ message }: { message: ChatItem }) {
   if (message.role === "user") {
     return (
@@ -579,6 +752,7 @@ function MessageBubble({ message }: { message: ChatItem }) {
   if (message.role === "tool") {
     const isPending = "_pending" in message && message._pending;
     const useCase = "_useCase" in message ? message._useCase : undefined;
+    const toolInfo = TOOL_DESCRIPTIONS[message.toolName ?? ""];
 
     return (
       <div className="flex items-start gap-3">
@@ -586,15 +760,37 @@ function MessageBubble({ message }: { message: ChatItem }) {
           <Wrench className="h-3.5 w-3.5 text-accent" />
         </div>
         <div className="flex-grow min-w-0 space-y-2">
-          <p className="text-xs font-mono text-accent uppercase tracking-wider">
-            {message.toolName ?? "tool"}
-          </p>
-          {isPending ? (
+          <div>
+            <p className="text-xs font-medium text-accent">
+              {toolInfo?.label ?? message.toolName ?? "tool"}
+            </p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">
+              {toolInfo?.desc ?? message.content}
+            </p>
+          </div>
+          {"plan" in message && message.plan ? (
+            <PlanCard plan={message.plan} />
+          ) : "toolFailure" in message && message.toolFailure ? (
+            <FailureCard
+              tool={message.toolFailure.tool}
+              error={message.toolFailure.error}
+              recovery={message.toolFailure.recovery}
+            />
+          ) : "serviceStatus" in message && message.serviceStatus ? (
+            <div className="pt-1">
+              <ServiceStatusBadge
+                service={message.serviceStatus.service}
+                status={message.serviceStatus.status}
+              />
+            </div>
+          ) : isPending ? (
             <ExaSearchingSkeleton useCase={useCase} />
           ) : message.budgetAllocations?.length ? (
             <BudgetAllocationsCard allocations={message.budgetAllocations} />
           ) : message.foodOrder ? (
             <FoodOrderCard order={message.foodOrder} />
+          ) : message.kbDocuments?.length ? (
+            <KBDocumentsCard documents={message.kbDocuments} />
           ) : message.exaVerdict ? (
             <ExaVerdictCard verdict={message.exaVerdict} />
           ) : message.exaCVE ? (
@@ -668,6 +864,17 @@ function MessageBubble({ message }: { message: ChatItem }) {
                     </p>
                   </CardContent>
                 </Card>
+              ))}
+            </div>
+          ) : message.content.includes("\n") ? (
+            <div className="space-y-1">
+              {message.content.split("\n").map((line, i) => (
+                <p key={i} className={cn(
+                  "text-sm",
+                  i === 0 ? "text-muted-foreground" : line.startsWith("✓") ? "text-green-500" : line.startsWith("⚠") ? "text-orange-400" : "text-muted-foreground"
+                )}>
+                  {line}
+                </p>
               ))}
             </div>
           ) : (

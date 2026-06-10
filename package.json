@@ -10,7 +10,6 @@
   ],
   "scripts": {
     "dev": "bun run notion:mcp & bun run --env-file=.env --cwd apps/web dev",
-    "dev:food": "cd apps/food-ordering && uvicorn api.app:app --reload",
     "find:bedrock-model": "bun --env-file=.env scripts/find-bedrock-model.ts",
     "notion:mcp": "bun --env-file=.env scripts/start-notion-mcp.ts",
     "notion:verify": "bun --env-file=.env scripts/verify-notion-mcp.ts",
@@ -35,6 +34,7 @@
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1065.0",
     "@aws-sdk/client-sts": "^3.1064.0",
+    "@aws-sdk/s3-request-presigner": "^3.1065.0",
     "@notionhq/notion-mcp-server": "^2.2.1",
     "@smithy/node-http-handler": "^4.7.7",
     "exa-js": "^2.13.0"

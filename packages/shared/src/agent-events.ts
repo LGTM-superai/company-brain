@@ -1,4 +1,4 @@
-import type { ToolName } from "./tool-types";
+import type { AgentId, ToolName } from "./tool-types";
 
 export type ExaSearchResult = {
   title: string;
@@ -65,6 +65,17 @@ export type FoodRecommendationEvent = {
   estimatedCostPerHead: string;
 };
 
+export type KBDocumentResult = {
+  id?: string;
+  key?: string;
+  title: string;
+  domain: string;
+  sensitivity: string;
+  summary?: string;
+  tags?: string[];
+  downloadUrl?: string;
+};
+
 export type FoodOrderEvent = {
   teamName: string;
   headcount: number;
@@ -79,7 +90,28 @@ export type FoodOrderEvent = {
   };
 };
 
+export type PlanStep = {
+  id: string;
+  agent: AgentId;
+  tool: ToolName;
+  description: string;
+  status: "pending" | "running" | "done" | "failed" | "skipped";
+};
+
+export type AgentPlan = {
+  planId: string;
+  reasoning: string;
+  steps: PlanStep[];
+  status: "proposed" | "approved" | "executing" | "completed";
+};
+
 export type AgentEvent =
+  | {
+      type: "agent_delegation";
+      agent: AgentId;
+      query?: string;
+      task?: string;
+    }
   | {
       type: "tool_call";
       tool: ToolName;
@@ -127,6 +159,36 @@ export type AgentEvent =
   | {
       type: "food_order";
       order: FoodOrderEvent;
+    }
+  | {
+      type: "kb_documents";
+      documents: KBDocumentResult[];
+    }
+  | {
+      type: "plan_proposed";
+      plan: AgentPlan;
+    }
+  | {
+      type: "plan_step_start";
+      planId: string;
+      stepId: string;
+    }
+  | {
+      type: "plan_step_done";
+      planId: string;
+      stepId: string;
+      success: boolean;
+    }
+  | {
+      type: "tool_failure";
+      tool: ToolName;
+      error: string;
+      recovery: string;
+    }
+  | {
+      type: "service_status";
+      service: string;
+      status: "healthy" | "degraded" | "down";
     }
   | {
       type: "assistant_message";

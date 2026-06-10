@@ -7,7 +7,7 @@ let _stripe: Stripe | null = null;
 
 function getStripe(): Stripe {
   if (!_stripe) {
-    const key = getEnv("STRIPE_SECRET_KEY");
+    const key = getEnv("STRIPE_SECRET_KEY") ?? getEnv("STRIPE_SECRET_TOKEN");
     if (!key) throw new Error("Missing required env var: STRIPE_SECRET_KEY");
     _stripe = new Stripe(key, { timeout: STRIPE_TIMEOUT_MS });
   }
