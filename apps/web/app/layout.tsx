@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 export const metadata = {
-  title: "Precision AI | Command Center",
+  title: "Insider AI | Command Center",
   description: "AI-powered command center for your company brain.",
 };
 
@@ -15,7 +16,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           rel="stylesheet"
         />
       </head>
-      <body className="overflow-hidden flex h-screen antialiased">{children}</body>
+      <body className="overflow-hidden flex h-screen antialiased">
+        {children}
+        <Toaster richColors position="bottom-right" />
+      </body>
     </html>
   );
 }
