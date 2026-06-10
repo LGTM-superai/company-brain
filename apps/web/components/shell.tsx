@@ -225,7 +225,7 @@ export function AppShell({
 
       <div className="flex-grow flex flex-col relative overflow-hidden">
         <header className="w-full h-14 border-b border-border bg-background flex items-center px-6">
-          <h1 className="text-xl font-bold text-foreground tracking-tight">
+          <h1 className="text-xl font-bold text-foreground tracking-tight py-8">
             Insider AI
           </h1>
         </header>
