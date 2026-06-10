@@ -27,3 +27,4 @@ apps/web/tsconfig.tsbuildinfo
 
 # claude
 .claude.mcp.json
+.mcp.json
