@@ -6,17 +6,19 @@ Default assumption:
 - Notion is the sprint board source, not a general knowledge base.
 
 Allowed changes:
-- status
-- assignee
-- priority
-- blocked reason
-- notes
+- Name
+- Status
+- Project
+- Assignee
+- Due Date
+- Priority
+- Latest agent note in the ticket body
 
 Before updating:
 - identify exact ticket
 - confirm current state
 - produce intended new state
-- require approval for status or assignee changes
+- require approval for any sprint-board field change
 
 After updating:
 - return audit payload for updateSlack

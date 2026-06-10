@@ -19,6 +19,7 @@ export type DashboardMessage = {
   role: "user" | "assistant" | "tool";
   content: string;
   toolName?: string;
+  toolData?: unknown;
   exaResults?: Array<{
     title: string;
     url: string;
@@ -93,6 +94,7 @@ export async function getDashboardData(): Promise<DashboardData> {
         role: message.role,
         content: message.content,
         toolName: message.toolName,
+        toolData: message.toolData,
         exaResults: message.exaResults,
       })),
       agents: agents.map((agent) => ({

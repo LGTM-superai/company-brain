@@ -195,6 +195,34 @@ input {
   margin-bottom: 14px;
 }
 
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.secondary-button {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+  color: var(--ink);
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.secondary-button:hover {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+.secondary-button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
 .command-grid {
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr) 300px;
@@ -502,6 +530,11 @@ input {
   .page-heading,
   .panel-header {
     flex-direction: column;
+  }
+
+  .panel-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .nav-list,
