@@ -10,6 +10,7 @@
   ],
   "scripts": {
     "dev": "bun run --env-file=.env --cwd apps/web dev",
+    "dev:food": "cd apps/food-ordering && uvicorn api.app:app --reload",
     "find:bedrock-model": "bun --env-file=.env scripts/find-bedrock-model.ts",
     "notion:mcp": "bun --env-file=.env scripts/start-notion-mcp.ts",
     "notion:map-to-review": "bun --env-file=.env apps/web/scripts/move-map-ticket-review.ts",
@@ -31,7 +32,7 @@
     "typescript": "^5.8.0"
   },
   "dependencies": {
-    "@aws-sdk/client-bedrock-runtime": "^3.1064.0",
+    "@aws-sdk/client-bedrock-runtime": "^3.1065.0",
     "@aws-sdk/client-sts": "^3.1064.0",
     "@notionhq/notion-mcp-server": "^2.2.1",
     "@smithy/node-http-handler": "^4.7.7",

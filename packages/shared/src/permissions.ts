@@ -9,6 +9,7 @@ export const toolOwners: Record<ToolName, PersonId[]> = {
   queryGithub: ["edrick", "darren"],
   updateGithub: ["edrick", "darren"],
   queryExa: ["laksh", "edrick"],
+  queryRepos: ["edrick", "darren"],
   makePayment: ["laksh"],
   buySomething: ["laksh"],
 };
@@ -25,6 +26,6 @@ export const agentTools: Record<AgentId, ToolName[]> = {
   main: [],
   coder: ["queryGithub", "updateGithub"],
   paymentsManager: ["makePayment", "buySomething"],
-  searcher: ["queryNotion", "querySlack", "queryGithub", "queryExa"],
+  searcher: ["queryNotion", "querySlack", "queryGithub", "queryExa", "queryRepos"],
   updater: ["updateNotion", "updateSlack", "updateGithub"],
 };

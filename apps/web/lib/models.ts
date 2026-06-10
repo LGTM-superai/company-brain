@@ -54,6 +54,26 @@ const MessageSchema = new Schema(
       ],
       default: undefined,
     },
+    repoMonitors: {
+      type: [
+        {
+          owner: String,
+          repo: String,
+          monitorId: String,
+          packages: [String],
+          slackChannelId: String,
+          severityThreshold: String,
+          status: String,
+          createdAt: String,
+        },
+      ],
+      default: undefined,
+    },
+    exaVerdict: { type: Schema.Types.Mixed, default: undefined },
+    exaCVE: { type: Schema.Types.Mixed, default: undefined },
+    exaNews: { type: [Schema.Types.Mixed], default: undefined },
+    budgetAllocations: { type: [Schema.Types.Mixed], default: undefined },
+    foodOrder: { type: Schema.Types.Mixed, default: undefined },
   },
   { timestamps: true },
 );
@@ -73,12 +93,34 @@ const KnowledgeNodeSchema = new Schema(
   {
     nodeId: { type: String, required: true, unique: true },
     label: { type: String, required: true },
-    type: { type: String, required: true },
-    source: { type: String, required: true },
+    type: { type: String, enum: ["tag"], required: true },
+    source: { type: String, enum: ["s3", "notion", "both"], required: true },
     summary: { type: String, required: true },
     x: { type: Number, required: true },
     y: { type: Number, required: true },
     links: { type: [String], default: [] },
+    metadata: {
+      type: {
+        documents: [{ path: String, source: String, title: String }],
+        weight: Number,
+      },
+      default: undefined,
+    },
+    indexedAt: { type: Date, default: undefined },
+  },
+  { timestamps: true },
+);
+
+const ExaRunSchema = new Schema(
+  {
+    runId: { type: String, required: true, unique: true },
+    conversationId: { type: String, required: true, index: true },
+    messageOrder: { type: Number, required: true },
+    useCase: { type: String, enum: ["verification", "research", "cve", "news"], required: true },
+    query: { type: String, required: true },
+    status: { type: String, enum: ["pending", "completed", "failed"], default: "pending" },
+    result: { type: Schema.Types.Mixed, default: undefined },
+    error: { type: String, default: undefined },
   },
   { timestamps: true },
 );
@@ -98,3 +140,6 @@ export const KnowledgeNodeModel =
 
 export const SlackAuditModel =
   mongoose.models.SlackAudit ?? mongoose.model("SlackAudit", SlackAuditSchema);
+
+export const ExaRunModel =
+  mongoose.models.ExaRun ?? mongoose.model("ExaRun", ExaRunSchema);

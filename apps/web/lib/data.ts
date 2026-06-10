@@ -14,6 +14,35 @@ export type DashboardConversation = {
   updatedLabel: string;
 };
 
+export type BudgetAllocation = {
+  projectId: string;
+  amountCents: number;
+  currency: string;
+  cardId: string;
+  status: "active" | "created";
+};
+
+export type FoodRecommendation = {
+  restaurantName: string;
+  url: string;
+  reason: string;
+  estimatedCostPerHead: string;
+};
+
+export type FoodOrder = {
+  teamName: string;
+  headcount: number;
+  dietary: string[];
+  allergens: string[];
+  recommendations: FoodRecommendation[];
+  budgetPerHeadCents: number;
+  payment?: {
+    totalCents: number;
+    paymentIntentId: string;
+    status: string;
+  };
+};
+
 export type DashboardMessage = {
   messageId: string;
   role: "user" | "assistant" | "tool";
@@ -26,6 +55,44 @@ export type DashboardMessage = {
     summary: string;
     publishedDate?: string;
   }>;
+  repoMonitors?: Array<{
+    owner: string;
+    repo: string;
+    monitorId: string;
+    packages: string[];
+    slackChannelId: string;
+    severityThreshold: string;
+    status: string;
+    createdAt: string;
+  }>;
+  exaVerdict?: {
+    verdict: string;
+    blocker_validity?: string;
+    confidence: string;
+    evidence_url: string;
+    evidence_title: string;
+    summary: string;
+    recommended_next_step: string;
+    notion_note_suggestion?: string;
+    slack_message_suggestion?: string;
+  };
+  exaCVE?: {
+    cve_id: string;
+    severity: string;
+    affected_packages: string[];
+    summary: string;
+    mitigation: string;
+    patch_url: string;
+  };
+  exaNews?: Array<{
+    title: string;
+    source: string;
+    url: string;
+    published_date: string;
+    summary: string;
+  }>;
+  budgetAllocations?: BudgetAllocation[];
+  foodOrder?: FoodOrder;
 };
 
 export type DashboardAgent = {
@@ -47,12 +114,17 @@ export type DashboardUser = {
 export type KnowledgeNode = {
   nodeId: string;
   label: string;
-  type: string;
-  source: string;
+  type: "tag";
+  source: "s3" | "notion" | "both";
   summary: string;
   x: number;
   y: number;
   links: string[];
+  metadata?: {
+    documents: Array<{ path: string; source: "s3" | "notion"; title?: string }>;
+    weight: number;
+  };
+  indexedAt?: string;
 };
 
 export type DashboardData = {
@@ -89,14 +161,38 @@ export async function getDashboardData(): Promise<DashboardData> {
         summary: conversation.summary,
         updatedLabel: conversation.updatedLabel,
       })),
-      messages: messages.map((message) => ({
-        messageId: message.messageId,
-        role: message.role,
-        content: message.content,
-        toolName: message.toolName,
-        toolData: message.toolData,
-        exaResults: message.exaResults,
-      })),
+      messages: messages.map((message) =>
+        JSON.parse(
+          JSON.stringify({
+            messageId: message.messageId,
+            role: message.role,
+            content: message.content,
+            toolName: message.toolName,
+            toolData: message.toolData,
+            exaResults: message.exaResults?.map((result: Record<string, unknown>) => ({
+              title: result.title,
+              url: result.url,
+              summary: result.summary,
+              publishedDate: result.publishedDate,
+            })),
+            repoMonitors: message.repoMonitors?.map((monitor: Record<string, unknown>) => ({
+              owner: monitor.owner,
+              repo: monitor.repo,
+              monitorId: monitor.monitorId,
+              packages: monitor.packages,
+              slackChannelId: monitor.slackChannelId,
+              severityThreshold: monitor.severityThreshold,
+              status: monitor.status,
+              createdAt: monitor.createdAt,
+            })),
+            exaVerdict: message.exaVerdict,
+            exaCVE: message.exaCVE,
+            exaNews: message.exaNews,
+            budgetAllocations: message.budgetAllocations,
+            foodOrder: message.foodOrder,
+          }),
+        ),
+      ),
       agents: agents.map((agent) => ({
         agentId: agent.agentId,
         name: agent.name,
@@ -120,6 +216,8 @@ export async function getDashboardData(): Promise<DashboardData> {
         x: node.x,
         y: node.y,
         links: node.links,
+        metadata: node.metadata,
+        indexedAt: node.indexedAt?.toISOString?.() ?? node.indexedAt,
       })),
     };
   } catch (error) {
