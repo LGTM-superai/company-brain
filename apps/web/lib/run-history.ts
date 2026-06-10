@@ -38,6 +38,14 @@ export type PendingAction =
       mentionPeople?: string[];
       reason: string;
       createdAt: string;
+    }
+  | {
+      actionId: string;
+      type: "create_ticket";
+      ticket: string;
+      changes: TicketFieldChanges;
+      reason: string;
+      createdAt: string;
     };
 
 export async function ensureConversation(conversationId: string, title: string) {

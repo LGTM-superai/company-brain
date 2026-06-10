@@ -1,5 +1,6 @@
 import { queryNotion } from "./notion/query-notion";
 import { updateNotion } from "./notion/update-notion";
+import { createNotionTicket } from "./notion/create-notion-ticket";
 import { querySlack } from "./slack/query-slack";
 import { updateSlack } from "./slack/update-slack";
 import { queryGithub } from "./github/query-github";
@@ -12,6 +13,7 @@ import { buySomething } from "./payments/buy-something";
 export const toolRegistry = {
   queryNotion,
   updateNotion,
+  createNotionTicket,
   querySlack,
   updateSlack,
   queryGithub,
