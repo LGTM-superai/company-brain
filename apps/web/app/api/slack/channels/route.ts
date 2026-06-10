@@ -20,7 +20,6 @@ export async function GET() {
         limit: 200,
         cursor,
       });
-      console.log("[slack/channels] ok:", result.ok, "count:", result.channels?.length, "warning:", result.warning);
       for (const c of result.channels ?? []) {
         if (c.id && c.name) all.push({ id: c.id, name: c.name });
       }
