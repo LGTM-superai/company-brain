@@ -50,7 +50,7 @@ export function AppShell({
           </span>
         </div>
 
-        <Button className="w-full mb-4 gap-2 cursor-pointer" size="lg" onClick={onNewChat}>
+        <Button className="w-full mb-4 gap-2 cursor-pointer shrink-0" onClick={onNewChat}>
           <Plus className="h-4 w-4" />
           New Chat
         </Button>
