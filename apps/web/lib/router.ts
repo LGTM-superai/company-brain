@@ -2,6 +2,7 @@ import {
   BedrockRuntimeClient,
   InvokeModelCommand,
 } from "@aws-sdk/client-bedrock-runtime";
+import { getEnv } from "./env";
 
 export type RoutedTools = {
   tools: string[];
@@ -43,7 +44,7 @@ let _client: BedrockRuntimeClient | null = null;
 function getClient(): BedrockRuntimeClient {
   if (!_client) {
     _client = new BedrockRuntimeClient({
-      region: process.env.AWS_REGION_NAME || "us-west-2",
+      region: getEnv("AWS_REGION_NAME") ?? getEnv("AWS_DEFAULT_REGION") ?? "us-west-2",
     });
   }
   return _client;
@@ -53,7 +54,7 @@ export async function routeMessage(
   message: string,
   conversationHistory: string[],
 ): Promise<RoutedTools> {
-  const model = process.env.BRAIN_BEDROCK_MODEL || "us.anthropic.claude-sonnet-4-5-20250929-v1:0";
+  const model = getEnv("BRAIN_BEDROCK_MODEL") ?? "us.anthropic.claude-sonnet-4-5-20250929-v1:0";
 
   const historyContext = conversationHistory.length > 0
     ? `\n\nRecent conversation:\n${conversationHistory.slice(-6).map((m) => `- ${m}`).join("\n")}`

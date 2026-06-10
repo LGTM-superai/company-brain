@@ -1,13 +1,14 @@
 import { AppShell } from "../../components/shell";
 import { getDashboardData } from "../../lib/data";
+import { getSessionUser } from "../../lib/session";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 export default async function UsersPage() {
-  const data = await getDashboardData();
+  const [data, sessionUser] = await Promise.all([getDashboardData(), getSessionUser()]);
 
   return (
-    <AppShell activePath="/users">
+    <AppShell activePath="/users" currentUser={sessionUser ? { id: sessionUser.id, name: sessionUser.name, role: sessionUser.role } : null}>
       {data.error ? (
         <div className="m-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-destructive text-sm">
           {data.error} Run `bun run seed` after setting MONGODB_URL.

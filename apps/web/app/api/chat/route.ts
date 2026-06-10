@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import {
-  generateText,
+  streamText,
   stepCountIs,
   tool,
   type ModelMessage,
@@ -13,7 +13,7 @@ import type {
   RepoMonitor,
   ToolName,
 } from "@company-brain/shared";
-import { users, type PersonId } from "@company-brain/shared";
+import { users, resolveAssignee, type PersonId } from "@company-brain/shared";
 import { toolRegistry } from "@company-brain/tools";
 import { getRuntimeModel } from "../../../lib/ai-model";
 import { connectMongo } from "../../../lib/mongodb";
@@ -46,8 +46,11 @@ import {
 import { gmt8TodayFromNow } from "../../../lib/time";
 import {
   queryExaCVE,
+  queryExaCVEFast,
   queryExaNews,
+  queryExaNewsFast,
   queryExaSearch,
+  queryExaSearchFast,
 } from "../../../../../exa-runtime";
 
 export const runtime = "nodejs";
@@ -55,6 +58,7 @@ export const runtime = "nodejs";
 type ChatRequestBody = {
   conversationId?: string;
   message?: string;
+  deepSearch?: boolean;
 };
 
 type SlackChannelPurpose =
@@ -147,67 +151,106 @@ export async function POST(request: Request) {
   const modelMessages = await buildModelMessages(conversationId);
   const toolChoice = forcedToolChoiceForLatestMessage(rawMessage, pendingAction, approvalGranted);
 
-  try {
-    const result = await generateText({
-      model: getRuntimeModel(),
-      system: systemPrompt({ pendingAction, approvalGranted }),
-      messages: modelMessages,
-      tools: buildTools({
-        conversationId,
-        approvalGranted,
-        pendingAction,
-        events,
-        nextOrderRef: {
-          get: () => nextOrder,
-          set: (value) => {
-            nextOrder = value;
-          },
-        },
-      }),
-      toolChoice,
-      stopWhen: stepCountIs(8),
-      maxOutputTokens: 900,
-      experimental_onToolCallStart: async (event) => {
-        const toolName = event.toolCall.toolName as ToolName;
-        events.push({ type: "tool_call", tool: toolName, args: event.toolCall.input });
-        const messageId = await persistToolCall(
-          conversationId,
-          toolName,
-          event.toolCall.input,
-          nextOrder++,
-        );
-        toolMessageIds.set(event.toolCall.toolCallId, messageId);
-      },
-      experimental_onToolCallFinish: async (event) => {
-        const messageId = toolMessageIds.get(event.toolCall.toolCallId);
+  const encoder = new TextEncoder();
+  let fullAnswer = "";
 
-        if (event.success) {
-          await persistToolResult(messageId, event.output, event.durationMs);
-          return;
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (event: string, data: unknown) => {
+        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+      };
+
+      send("meta", { conversationId });
+
+      try {
+        const result = streamText({
+          model: getRuntimeModel(),
+          system: systemPrompt({ pendingAction, approvalGranted }),
+          messages: modelMessages,
+          tools: buildTools({
+            conversationId,
+            approvalGranted,
+            pendingAction,
+            events,
+            deepSearch: body.deepSearch ?? false,
+            nextOrderRef: {
+              get: () => nextOrder,
+              set: (value) => {
+                nextOrder = value;
+              },
+            },
+          }),
+          toolChoice,
+          stopWhen: stepCountIs(8),
+          maxOutputTokens: 900,
+          experimental_onToolCallStart: async (event) => {
+            const toolName = event.toolCall.toolName as ToolName;
+            send("tool_call", { tool: toolName });
+            events.push({ type: "tool_call", tool: toolName, args: event.toolCall.input });
+            const messageId = await persistToolCall(
+              conversationId,
+              toolName,
+              event.toolCall.input,
+              nextOrder++,
+            );
+            toolMessageIds.set(event.toolCall.toolCallId, messageId);
+          },
+          experimental_onToolCallFinish: async (event) => {
+            const messageId = toolMessageIds.get(event.toolCall.toolCallId);
+            if (event.success) {
+              await persistToolResult(messageId, event.output, event.durationMs);
+            } else {
+              await persistToolFailure(messageId, event.error, event.durationMs);
+            }
+          },
+        });
+
+        for await (const part of result.fullStream) {
+          if (part.type === "text-delta") {
+            fullAnswer += part.text;
+            send("text_delta", { delta: part.text });
+          } else if (part.type === "tool-result") {
+            const ev = events.find(
+              (e) =>
+                (e.type === "exa_results" ||
+                  e.type === "exa_verdict" ||
+                  e.type === "exa_cve" ||
+                  e.type === "exa_news" ||
+                  e.type === "repo_monitors" ||
+                  e.type === "budget_allocated" ||
+                  e.type === "food_order") &&
+                !("_sent" in e),
+            ) as (AgentEvent & { _sent?: boolean }) | undefined;
+            if (ev) {
+              (ev as AgentEvent & { _sent?: boolean })._sent = true;
+              send("agent_event", ev);
+            }
+          }
         }
 
-        await persistToolFailure(messageId, event.error, event.durationMs);
-      },
-    });
+        const answer = fullAnswer.trim() || "Done.";
+        send("done", { content: answer });
 
-    const answer = result.text.trim() || "Done.";
-    events.push({ type: "assistant_message", content: answer });
-    events.push({ type: "done" });
+        await persistAssistantMessage(conversationId, answer, nextOrder++);
+        await updateConversationSummary(conversationId, summaryFromAnswer(rawMessage, answer));
+      } catch (error) {
+        const message = friendlyError(error);
+        send("error", { content: message });
+        await persistAssistantMessage(conversationId, message, nextOrder++);
+        await updateConversationSummary(conversationId, message);
+      } finally {
+        controller.close();
+      }
+    },
+  });
 
-    await persistAssistantMessage(conversationId, answer, nextOrder++);
-    await updateConversationSummary(conversationId, summaryFromAnswer(rawMessage, answer));
-
-    return NextResponse.json({ conversationId, events });
-  } catch (error) {
-    const message = friendlyError(error);
-    events.push({ type: "assistant_message", content: message });
-    events.push({ type: "done" });
-
-    await persistAssistantMessage(conversationId, message, nextOrder++);
-    await updateConversationSummary(conversationId, message);
-
-    return NextResponse.json({ conversationId, events }, { status: 500 });
-  }
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
 }
 
 function buildTools({
@@ -215,12 +258,14 @@ function buildTools({
   approvalGranted,
   pendingAction,
   events,
+  deepSearch,
   nextOrderRef,
 }: {
   conversationId: string;
   approvalGranted: boolean;
   pendingAction: PendingAction | null;
   events: AgentEvent[];
+  deepSearch: boolean;
   nextOrderRef: { get: () => number; set: (value: number) => void };
 }) {
   return {
@@ -285,9 +330,17 @@ function buildTools({
               target: input.ticket,
               action: "Recorded Latest agent note",
             });
+
+            return {
+              ok: true,
+              message: `Done. Recorded agent note on ${input.ticket}.`,
+            };
           }
 
-          return result;
+          return {
+            ok: false,
+            message: result.message ?? `Failed to write agent note on ${input.ticket}.`,
+          };
         }
 
         const request = await buildTicketFieldUpdateRequest(
@@ -337,9 +390,17 @@ function buildTools({
             target: request.ticketName,
             action: `Applied sprint-board changes: ${formatChanges(request.current, request.changes)}`,
           });
+
+          return {
+            ok: true,
+            message: `Done. ${request.ticketName}: ${formatChanges(request.current, request.changes)}. Verified in Notion.`,
+          };
         }
 
-        return result;
+        return {
+          ok: false,
+          message: result.message ?? `Notion write failed for ${request.ticket}: ${result.reason ?? "unknown error"}.`,
+        };
       },
     }),
     queryExa: tool({
@@ -355,7 +416,9 @@ function buildTools({
         const runId = `exa-run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
         if (useCase === "research") {
-          const result = await queryExaSearch(input.query);
+          const result = deepSearch
+            ? await queryExaSearch(input.query)
+            : await queryExaSearchFast(input.query);
           if (result.ok) {
             const event = {
               type: "exa_results" as const,
@@ -375,7 +438,9 @@ function buildTools({
         }
 
         if (useCase === "cve") {
-          const result = await queryExaCVE(input.query);
+          const result = deepSearch
+            ? await queryExaCVE(input.query)
+            : await queryExaCVEFast(input.query);
           if (result.ok) {
             const event = { type: "exa_cve" as const, runId, result: result.result };
             events.push(event);
@@ -387,7 +452,9 @@ function buildTools({
         }
 
         if (useCase === "news") {
-          const result = await queryExaNews(input.query);
+          const result = deepSearch
+            ? await queryExaNews(input.query)
+            : await queryExaNewsFast(input.query);
           if (result.ok) {
             const event = { type: "exa_news" as const, runId, articles: result.articles };
             events.push(event);
@@ -1066,20 +1133,7 @@ function normalizeProject(project: string) {
 }
 
 function normalizeAssignee(assignee: string) {
-  const aliases: Record<string, string> = {
-    carlos: "Carlos Vincent Frasenda",
-    "carlos vincent": "Carlos Vincent Frasenda",
-    "carlos vincent frasenda": "Carlos Vincent Frasenda",
-    edrick: "Edrick Kesuma",
-    "edrick kesuma": "Edrick Kesuma",
-    darren: "Darren Prasetya",
-    "darren prasetya": "Darren Prasetya",
-    laksh: "Lakshya Agarwal",
-    lakshya: "Lakshya Agarwal",
-    "lakshya agarwal": "Lakshya Agarwal",
-  };
-
-  return aliases[normalizeKey(assignee)] ?? assignee.trim();
+  return resolveAssignee(assignee) ?? assignee.trim();
 }
 
 function normalizePriority(priority: string) {

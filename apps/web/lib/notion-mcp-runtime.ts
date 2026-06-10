@@ -1,5 +1,6 @@
 import { createMCPClient } from "@ai-sdk/mcp";
 import type { ToolSet } from "ai";
+import { resolveAssignee } from "@company-brain/shared";
 import { getEnv, requireEnv } from "./env";
 import { HARBOR_BEAN_PROJECT, getNotionDatabaseId } from "./notion-runtime";
 import { overdueInfo } from "./time";
@@ -203,11 +204,29 @@ export async function moveMcpTicketStatus(input: McpMoveStatusInput) {
       },
     });
 
+    const verifyResult = await queryMcpNotionTicketsWithRuntime(runtime, {
+      project: HARBOR_BEAN_PROJECT,
+      ticket: input.ticket,
+      includeBody: false,
+    });
+
+    const verified = verifyResult.tickets[0];
+
+    if (!verified || normalizeComparableValue(verified.status) !== normalizeComparableValue(input.newStatus)) {
+      return {
+        ok: false,
+        source: "notion-mcp",
+        reason: "write_verification_failed",
+        message: `Notion status move appeared to succeed but verification failed: status is ${verified?.status ?? "unknown"}, expected ${input.newStatus}.`,
+        ticket,
+      };
+    }
+
     return {
       ok: true,
       source: "notion-mcp",
       action: "move_status",
-      ticket: { ...ticket, status: input.newStatus },
+      ticket: verified,
       previousStatus: input.currentStatus,
       newStatus: input.newStatus,
     };
@@ -260,13 +279,30 @@ export async function updateMcpTicketFields(input: McpUpdateTicketFieldsInput) {
       properties: notionPropertiesFromTicketFieldChanges(changes),
     });
 
-    const updatedTicket = applyTicketFieldChanges(ticket, changes);
+    const verifyResult = await queryMcpNotionTicketsWithRuntime(runtime, {
+      project: HARBOR_BEAN_PROJECT,
+      ticket: input.ticket,
+      includeBody: false,
+    });
+
+    const verified = verifyResult.tickets[0];
+    const mismatch = verified ? verifyTicketFieldChanges(verified, changes) : null;
+
+    if (!verified || mismatch) {
+      return {
+        ok: false,
+        source: "notion-mcp",
+        reason: "write_verification_failed",
+        message: `Notion write appeared to succeed but verification failed: ${mismatch ?? "ticket not found on re-read"}.`,
+        ticket,
+      };
+    }
 
     return {
       ok: true,
       source: "notion-mcp",
       action: "update_ticket_fields",
-      ticket: updatedTicket,
+      ticket: verified,
       previous: ticketFieldSnapshot(ticket, changes),
       changes,
     };
@@ -873,4 +909,26 @@ function isMcpBlock(value: unknown): value is McpBlock {
 
 function objectValue(value: unknown) {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+}
+
+function verifyTicketFieldChanges(
+  ticket: ReturnType<typeof normalizeMcpTicket>,
+  changes: McpTicketFieldValues,
+): string | null {
+  for (const field of Object.keys(changes) as Array<keyof McpTicketFieldValues>) {
+    const expected = changes[field];
+    if (expected === undefined) continue;
+    const actual = ticket[field];
+
+    if (field === "assignee") {
+      const canonicalActual = resolveAssignee(String(actual ?? "")) ?? normalizeComparableValue(actual);
+      const canonicalExpected = resolveAssignee(String(expected)) ?? normalizeComparableValue(expected);
+      if (canonicalActual.toLowerCase() !== canonicalExpected.toLowerCase()) {
+        return `${field} is "${formatFieldValue(actual)}", expected "${formatFieldValue(expected)}"`;
+      }
+    } else if (normalizeComparableValue(actual) !== normalizeComparableValue(expected)) {
+      return `${field} is "${formatFieldValue(actual)}", expected "${formatFieldValue(expected)}"`;
+    }
+  }
+  return null;
 }

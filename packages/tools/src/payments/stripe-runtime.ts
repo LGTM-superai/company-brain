@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { getEnv } from "../env";
 
 const STRIPE_TIMEOUT_MS = 15_000;
 
@@ -6,7 +7,7 @@ let _stripe: Stripe | null = null;
 
 function getStripe(): Stripe {
   if (!_stripe) {
-    const key = process.env.STRIPE_SECRET_KEY;
+    const key = getEnv("STRIPE_SECRET_KEY");
     if (!key) throw new Error("Missing required env var: STRIPE_SECRET_KEY");
     _stripe = new Stripe(key, { timeout: STRIPE_TIMEOUT_MS });
   }

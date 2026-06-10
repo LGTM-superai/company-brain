@@ -4,6 +4,7 @@ import {
 } from "@aws-sdk/client-bedrock-runtime";
 import type { PersonId } from "@company-brain/shared";
 import { users } from "@company-brain/shared";
+import { getEnv } from "./env";
 
 export type GeneratedSlackMessage = {
   text: string;
@@ -28,7 +29,7 @@ let _client: BedrockRuntimeClient | null = null;
 function getClient(): BedrockRuntimeClient {
   if (!_client) {
     _client = new BedrockRuntimeClient({
-      region: process.env.AWS_REGION_NAME || "us-west-2",
+      region: getEnv("AWS_REGION_NAME") ?? getEnv("AWS_DEFAULT_REGION") ?? "us-west-2",
     });
   }
   return _client;
@@ -38,7 +39,7 @@ export async function generateSlackMessage(
   userRequest: string,
   conversationHistory: string[],
 ): Promise<GeneratedSlackMessage> {
-  const model = process.env.BRAIN_BEDROCK_MODEL || "us.anthropic.claude-sonnet-4-5-20250929-v1:0";
+  const model = getEnv("BRAIN_BEDROCK_MODEL") ?? "us.anthropic.claude-sonnet-4-5-20250929-v1:0";
 
   const historyContext = conversationHistory.length > 0
     ? `\nRecent conversation:\n${conversationHistory.slice(-4).map((m) => `- ${m}`).join("\n")}`

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Plus, Terminal, GitGraph, Users, Settings, Sparkles, Shield, Trash2 } from "lucide-react";
+import { Plus, Terminal, GitGraph, Users, Settings, Sparkles, Shield, Trash2, LogOut } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "Command Center", icon: Terminal },
@@ -25,6 +26,7 @@ export function AppShell({
   onSelectConversation,
   onNewChat,
   onDeleteConversation,
+  currentUser,
 }: {
   activePath: string;
   children: ReactNode;
@@ -33,7 +35,9 @@ export function AppShell({
   onSelectConversation?: (conversationId: string) => void;
   onNewChat?: () => void;
   onDeleteConversation?: (conversationId: string) => void;
+  currentUser?: { id: string; name: string; role: string } | null;
 }) {
+  const router = useRouter();
   return (
     <TooltipProvider delayDuration={200}>
       <aside className="h-screen w-72 flex-shrink-0 flex flex-col border-r border-sidebar-border bg-sidebar p-4">
@@ -126,19 +130,38 @@ export function AppShell({
         <div className="flex items-center gap-3 px-2">
           <Avatar className="h-8 w-8 border border-sidebar-border">
             <AvatarFallback className="bg-sidebar-accent text-sidebar-foreground text-xs font-medium">
-              AU
+              {currentUser
+                ? currentUser.name
+                    .split(" ")
+                    .map((p) => p[0])
+                    .join("")
+                    .slice(0, 2)
+                : "?"}
             </AvatarFallback>
           </Avatar>
           <div className="flex-grow overflow-hidden">
-            <p className="text-sm font-medium text-sidebar-foreground truncate">Admin User</p>
+            <p className="text-sm font-medium text-sidebar-foreground truncate">
+              {currentUser?.name ?? "Unknown"}
+            </p>
+            <p className="text-[11px] text-muted-foreground truncate">
+              {currentUser?.role}
+            </p>
           </div>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button type="button" className="text-muted-foreground hover:text-sidebar-foreground transition-colors duration-200 cursor-pointer">
-                <Settings className="h-4 w-4" />
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-red-400 transition-colors duration-200 cursor-pointer"
+                onClick={async () => {
+                  await fetch("/api/auth/logout", { method: "POST" });
+                  router.push("/login");
+                  router.refresh();
+                }}
+              >
+                <LogOut className="h-4 w-4" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Settings</TooltipContent>
+            <TooltipContent>Log out</TooltipContent>
           </Tooltip>
         </div>
       </aside>

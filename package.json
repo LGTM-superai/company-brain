@@ -9,10 +9,11 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run --env-file=.env --cwd apps/web dev",
+    "dev": "bun run notion:mcp & bun run --env-file=.env --cwd apps/web dev",
     "dev:food": "cd apps/food-ordering && uvicorn api.app:app --reload",
     "find:bedrock-model": "bun --env-file=.env scripts/find-bedrock-model.ts",
     "notion:mcp": "bun --env-file=.env scripts/start-notion-mcp.ts",
+    "notion:verify": "bun --env-file=.env scripts/verify-notion-mcp.ts",
     "notion:map-to-review": "bun --env-file=.env apps/web/scripts/move-map-ticket-review.ts",
     "notion:reservation-body": "bun --env-file=.env apps/web/scripts/query-reservation-ticket-body.ts",
     "mcp:tools": "bun --env-file=.env apps/web/scripts/list-notion-mcp-tools.ts",
