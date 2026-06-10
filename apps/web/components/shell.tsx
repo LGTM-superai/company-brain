@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -9,7 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Plus, Terminal, GitGraph, Users, Settings, Sparkles, Shield, Trash2, LogOut } from "lucide-react";
+import { Plus, Terminal, GitGraph, Users, Settings, Sparkles, Shield, Trash2, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "Command Center", icon: Terminal },
@@ -38,23 +39,61 @@ export function AppShell({
   currentUser?: { id: string; name: string; role: string } | null;
 }) {
   const router = useRouter();
+  const [collapsed, setCollapsed] = useState(false);
+
   return (
     <TooltipProvider delayDuration={200}>
-      <aside className="h-screen w-72 flex-shrink-0 flex flex-col border-r border-sidebar-border bg-sidebar p-4">
-        <div className="mb-6 flex items-center gap-3 px-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-            <Sparkles className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <span className="text-lg font-bold tracking-tight text-sidebar-foreground">
-            Precision
-          </span>
+      <aside
+        className={cn(
+          "h-screen flex-shrink-0 flex flex-col border-r border-sidebar-border bg-sidebar transition-all duration-200",
+          collapsed ? "w-14 p-4" : "w-72 p-4"
+        )}
+      >
+        {/* Header */}
+        <div className={cn("mb-6 flex items-center gap-3", collapsed ? "px-1 justify-center" : "px-2")}>
+          {!collapsed && (
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary flex-shrink-0">
+              <Sparkles className="h-5 w-5 text-primary-foreground" />
+            </div>
+          )}
+          {!collapsed && (
+            <span className="text-lg font-bold tracking-tight text-sidebar-foreground flex-1">
+              Insider AI
+            </span>
+          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="text-muted-foreground hover:text-sidebar-foreground transition-colors cursor-pointer rounded p-1 hover:bg-sidebar-accent"
+                onClick={() => setCollapsed((c) => !c)}
+              >
+                {collapsed ? (
+                  <PanelLeftOpen className="h-4 w-4" />
+                ) : (
+                  <PanelLeftClose className="h-4 w-4" />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right">{collapsed ? "Expand sidebar" : "Collapse sidebar"}</TooltipContent>
+          </Tooltip>
         </div>
 
-        <Button className="w-full mb-4 gap-2 cursor-pointer shrink-0" onClick={onNewChat}>
-          <Plus className="h-4 w-4" />
-          New Chat
-        </Button>
+        {/* New Chat */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              className={cn("mb-4 gap-2 cursor-pointer shrink-0", collapsed ? "w-full px-0 justify-center" : "w-full")}
+              onClick={onNewChat}
+            >
+              <Plus className="h-4 w-4 flex-shrink-0" />
+              {!collapsed && "New Chat"}
+            </Button>
+          </TooltipTrigger>
+          {collapsed && <TooltipContent side="right">New Chat</TooltipContent>}
+        </Tooltip>
 
+        {/* Nav */}
         <nav className="flex flex-col gap-1 mb-4">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -64,14 +103,15 @@ export function AppShell({
                   <Link
                     href={item.href}
                     className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors duration-200 cursor-pointer",
+                      "flex items-center rounded-lg py-2 text-sm transition-colors duration-200 cursor-pointer",
+                      collapsed ? "justify-center px-2" : "gap-3 px-3",
                       item.href === activePath
                         ? "bg-sidebar-accent text-sidebar-foreground font-medium"
                         : "text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
                     )}
                   >
-                    <Icon className="h-4 w-4" />
-                    {item.label}
+                    <Icon className="h-4 w-4 flex-shrink-0" />
+                    {!collapsed && item.label}
                   </Link>
                 </TooltipTrigger>
                 <TooltipContent side="right">{item.label}</TooltipContent>
@@ -82,7 +122,8 @@ export function AppShell({
 
         <Separator className="mb-4 bg-sidebar-border" />
 
-        {conversations && conversations.length > 0 && (
+        {/* Recent conversations */}
+        {!collapsed && conversations && conversations.length > 0 && (
           <div className="flex-grow flex flex-col min-h-0 overflow-hidden">
             <p className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-2 px-2">
               Recent
@@ -127,49 +168,65 @@ export function AppShell({
         )}
 
         <Separator className="mt-auto mb-3 bg-sidebar-border" />
-        <div className="flex items-center gap-3 px-2">
-          <Avatar className="h-8 w-8 border border-sidebar-border">
-            <AvatarFallback className="bg-sidebar-accent text-sidebar-foreground text-xs font-medium">
-              {currentUser
-                ? currentUser.name
-                    .split(" ")
-                    .map((p) => p[0])
-                    .join("")
-                    .slice(0, 2)
-                : "?"}
-            </AvatarFallback>
-          </Avatar>
-          <div className="flex-grow overflow-hidden">
-            <p className="text-sm font-medium text-sidebar-foreground truncate">
-              {currentUser?.name ?? "Unknown"}
-            </p>
-            <p className="text-[11px] text-muted-foreground truncate">
-              {currentUser?.role}
-            </p>
-          </div>
+
+        {/* User footer */}
+        <div className={cn("flex items-center gap-3", collapsed ? "justify-center px-1" : "px-2")}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="text-muted-foreground hover:text-red-400 transition-colors duration-200 cursor-pointer"
-                onClick={async () => {
-                  await fetch("/api/auth/logout", { method: "POST" });
-                  router.push("/login");
-                  router.refresh();
-                }}
-              >
-                <LogOut className="h-4 w-4" />
-              </button>
+              <Avatar className="h-8 w-8 border border-sidebar-border flex-shrink-0">
+                <AvatarFallback className="bg-sidebar-accent text-sidebar-foreground text-xs font-medium">
+                  {currentUser
+                    ? currentUser.name
+                        .split(" ")
+                        .map((p) => p[0])
+                        .join("")
+                        .slice(0, 2)
+                    : "?"}
+                </AvatarFallback>
+              </Avatar>
             </TooltipTrigger>
-            <TooltipContent>Log out</TooltipContent>
+            {collapsed && (
+              <TooltipContent side="right">
+                {currentUser?.name ?? "Unknown"} · {currentUser?.role}
+              </TooltipContent>
+            )}
           </Tooltip>
+
+          {!collapsed && (
+            <>
+              <div className="flex-grow overflow-hidden">
+                <p className="text-sm font-medium text-sidebar-foreground truncate">
+                  {currentUser?.name ?? "Unknown"}
+                </p>
+                <p className="text-[11px] text-muted-foreground truncate">
+                  {currentUser?.role}
+                </p>
+              </div>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-red-400 transition-colors duration-200 cursor-pointer"
+                    onClick={async () => {
+                      await fetch("/api/auth/logout", { method: "POST" });
+                      router.push("/login");
+                      router.refresh();
+                    }}
+                  >
+                    <LogOut className="h-4 w-4" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Log out</TooltipContent>
+              </Tooltip>
+            </>
+          )}
         </div>
       </aside>
 
       <div className="flex-grow flex flex-col relative overflow-hidden">
         <header className="w-full h-14 border-b border-border bg-background flex items-center px-6">
           <h1 className="text-xl font-bold text-foreground tracking-tight">
-            Precision Chatbot
+            Insider AI
           </h1>
         </header>
         <main className="flex-grow flex flex-col overflow-hidden">{children}</main>

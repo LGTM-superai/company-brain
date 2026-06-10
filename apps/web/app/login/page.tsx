@@ -61,7 +61,7 @@ export default function LoginPage() {
             </div>
           </div>
           <h1 className="text-2xl font-bold text-foreground tracking-tight">
-            Precision AI
+            Insider AI
           </h1>
           <p className="text-sm text-muted-foreground">
             Select your identity to continue
